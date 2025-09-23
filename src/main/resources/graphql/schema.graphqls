@@ -1,0 +1,22 @@
+type Contract {
+    id: ID!
+    contractName: String
+    contractNo: String
+    renewalNo: Int
+    endorsementNo: Int
+    layers: [Layer!]!
+}
+
+type Layer {
+    id: ID!
+    layerOrder: Int
+    lossLimitAmount: Float
+    lossLimitAmountRc: Float
+    deductibleAmount: Float
+    deductibleAmountRc: Float
+}
+
+type Query {
+    getContract(contractId: ID!): Contract
+    getAllContracts: [Contract!]!
+}
