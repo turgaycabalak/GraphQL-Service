@@ -18,5 +18,6 @@ type Layer {
 
 type Query {
     getContract(contractId: ID!): Contract
+    getContractDynamicSql(contractId: ID!): Contract
     getAllContracts: [Contract!]!
 }

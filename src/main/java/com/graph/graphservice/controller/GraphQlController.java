@@ -1,12 +1,19 @@
 package com.graph.graphservice.controller;
 
+import graphql.schema.DataFetchingEnvironment;
+import graphql.schema.DataFetchingFieldSelectionSet;
+
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import com.graph.graphservice.dto.ContractResponse;
 import com.graph.graphservice.entity.ContractEntity;
 import com.graph.graphservice.mapper.ContractMapper;
 import com.graph.graphservice.repository.ContractRepository;
+import com.graph.graphservice.repository.DynamicContractRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -18,6 +25,7 @@ import org.springframework.stereotype.Controller;
 @RequiredArgsConstructor
 public class GraphQlController {
   private final ContractRepository contractRepository;
+  private final DynamicContractRepository dynamicContractRepository;
 
   @QueryMapping
   public ContractResponse getContract(@Argument("contractId") UUID contractId) {
@@ -34,4 +42,32 @@ public class GraphQlController {
     return ContractMapper.INSTANCE.toModels(contracts);
   }
 
+
+  @QueryMapping
+  public ContractResponse getContractDynamicSql(@Argument("contractId") UUID contractId,
+                                                DataFetchingEnvironment env) {
+    DataFetchingFieldSelectionSet selectionSet = env.getSelectionSet();
+
+    Set<String> contractFields = new HashSet<>();
+    Set<String> layerFields = new HashSet<>();
+
+    selectionSet.getFields().forEach(field -> {
+      String path = field.getQualifiedName();
+      System.out.println(path);
+
+      if (path.startsWith("layers/")) {
+        layerFields.add(path.replace("layers/", ""));
+      } else if (!"layers".equals(path)) { // root field layers’ı exclude et
+        contractFields.add(field.getName());
+      }
+    });
+
+    System.out.println("Contract fields: " + contractFields);
+    System.out.println("Layer fields" + layerFields);
+
+    ContractEntity contractEntity =
+        dynamicContractRepository.findContractDynamic(contractId, contractFields, layerFields);
+
+    return ContractMapper.INSTANCE.toModel(contractEntity);
+  }
 }
