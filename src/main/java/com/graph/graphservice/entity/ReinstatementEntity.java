@@ -1,17 +1,14 @@
 package com.graph.graphservice.entity;
 
 import java.math.BigDecimal;
-import java.util.Set;
 import java.util.UUID;
 
-import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
@@ -26,24 +23,22 @@ import lombok.experimental.SuperBuilder;
 @Entity
 @SuperBuilder
 @NoArgsConstructor
-@Table(name = "layer")
-public class LayerEntity {
+@Table(name = "reinstatement")
+public class ReinstatementEntity {
   @Id
   @Column(columnDefinition = "UUID default gen_random_uuid()")
   private UUID id;
 
-  private int layerOrder;
-
-  private BigDecimal lossLimitAmount;
-  private BigDecimal lossLimitAmountRc;
-  private BigDecimal deductibleAmount;
-  private BigDecimal deductibleAmountRc;
-
-  @OneToMany(mappedBy = "layer", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-  private Set<ReinstatementEntity> reinstatements;
+  private int reinstatementOrder;
+  private BigDecimal reinstatementRatio;
 
   @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "contract_id", nullable = false)
+  @JoinColumn(name = "layer_id", columnDefinition = "uuid default null", nullable = false)
+  @JsonIgnore
+  private LayerEntity layer;
+
+  @ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(name = "contract_id", columnDefinition = "uuid default null", nullable = false)
   @JsonIgnore
   private ContractEntity contract;
 }

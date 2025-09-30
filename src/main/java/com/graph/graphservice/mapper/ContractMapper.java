@@ -13,7 +13,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.factory.Mappers;
 
-@Mapper(uses = {LayerMapper.class})
+@Mapper(uses = {LayerMapper.class, ContractDetailMapper.class})
 public interface ContractMapper {
   ContractMapper INSTANCE = Mappers.getMapper(ContractMapper.class);
 

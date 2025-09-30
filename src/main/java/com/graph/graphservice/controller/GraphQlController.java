@@ -3,17 +3,19 @@ package com.graph.graphservice.controller;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.DataFetchingFieldSelectionSet;
 
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 import com.graph.graphservice.dto.ContractResponse;
+import com.graph.graphservice.dto.FieldNode;
 import com.graph.graphservice.entity.ContractEntity;
 import com.graph.graphservice.mapper.ContractMapper;
 import com.graph.graphservice.repository.ContractRepository;
 import com.graph.graphservice.repository.DynamicContractRepository;
+import com.graph.graphservice.repository.DynamicContractRepositoryV2;
+import com.graph.graphservice.utils.FieldNodeUtil;
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Controller;
 public class GraphQlController {
   private final ContractRepository contractRepository;
   private final DynamicContractRepository dynamicContractRepository;
+  private final DynamicContractRepositoryV2 dynamicContractRepositoryV2;
 
   @QueryMapping
   public ContractResponse getContract(@Argument("contractId") UUID contractId) {
@@ -67,6 +70,19 @@ public class GraphQlController {
 
     ContractEntity contractEntity =
         dynamicContractRepository.findContractDynamic(contractId, contractFields, layerFields);
+
+    return ContractMapper.INSTANCE.toModel(contractEntity);
+  }
+
+  @QueryMapping
+  public ContractResponse getContractDynamicSqlV2(@Argument("contractId") UUID contractId,
+                                                  DataFetchingEnvironment env) {
+    DataFetchingFieldSelectionSet selectionSet = env.getSelectionSet();
+
+    // FieldNode ağacını kur
+    FieldNode rootNode = FieldNodeUtil.buildFieldTree(selectionSet, "contract");
+
+    ContractEntity contractEntity = dynamicContractRepositoryV2.findContractDynamic(contractId, rootNode);
 
     return ContractMapper.INSTANCE.toModel(contractEntity);
   }

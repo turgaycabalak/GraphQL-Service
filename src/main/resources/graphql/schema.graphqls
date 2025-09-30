@@ -4,7 +4,8 @@ type Contract {
     contractNo: String
     renewalNo: Int
     endorsementNo: Int
-    layers: [Layer!]!
+    layers: [Layer!]
+    contractDetail: ContractDetail
 }
 
 type Layer {
@@ -14,10 +15,26 @@ type Layer {
     lossLimitAmountRc: Float
     deductibleAmount: Float
     deductibleAmountRc: Float
+    reinstatements: [Reinstatement!]
 }
+
+type Reinstatement {
+    id: ID!
+    #    layerOrder: Int
+    reinstatementOrder: Int
+    reinstatementRatio: Float
+}
+
+type ContractDetail {
+    id: ID!
+    endDate: String
+    startDate: String
+}
+
 
 type Query {
     getContract(contractId: ID!): Contract
     getContractDynamicSql(contractId: ID!): Contract
+    getContractDynamicSqlV2(contractId: ID!): Contract
     getAllContracts: [Contract!]!
 }

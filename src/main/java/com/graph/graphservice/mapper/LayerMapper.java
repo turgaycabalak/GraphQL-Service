@@ -13,7 +13,7 @@ import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.factory.Mappers;
 
-@Mapper
+@Mapper(uses = {ReinstatementMapper.class})
 public interface LayerMapper {
   LayerMapper INSTANCE = Mappers.getMapper(LayerMapper.class);
 
