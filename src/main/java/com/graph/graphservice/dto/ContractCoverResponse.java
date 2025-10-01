@@ -4,10 +4,11 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 import com.graph.graphservice.entity.BranchEnum;
+import com.graph.graphservice.entity.CoverEnum;
 
-public record CoverageResponse(
+public record ContractCoverResponse(
     UUID id,
-    BranchEnum branchEnum,
+    CoverEnum coverEnum,
     BigDecimal premiumAmount
 ) {
 }

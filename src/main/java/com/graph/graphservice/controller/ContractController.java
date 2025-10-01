@@ -15,15 +15,18 @@ import java.util.stream.IntStream;
 import com.github.javafaker.Faker;
 import com.graph.graphservice.entity.BranchEnum;
 import com.graph.graphservice.entity.ContractBranchEntity;
+import com.graph.graphservice.entity.ContractCoverEntity;
 import com.graph.graphservice.entity.ContractDetailEntity;
 import com.graph.graphservice.entity.ContractEntity;
 import com.graph.graphservice.entity.ContractStatusEnum;
+import com.graph.graphservice.entity.CoverEnum;
 import com.graph.graphservice.entity.LayerEntity;
 import com.graph.graphservice.entity.ReinstatementEntity;
 import com.graph.graphservice.repository.ContractRepository;
 
 import lombok.RequiredArgsConstructor;
 
+import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -80,7 +83,7 @@ public class ContractController {
                       .build();
                 })
                 .collect(Collectors.toSet());
-            contract.setCoverages(coverages);
+            contract.setContractBranches(coverages);
 
             // 1-8 Layer ekle
             int layerCount = random.nextInt(8) + 1;
@@ -120,5 +123,50 @@ public class ContractController {
         .toList();
 
     return contractRepository.saveAll(contracts);
+  }
+
+  @GetMapping("/set-covers")
+  public void setCovers() {
+    Faker faker = new Faker();
+    Random random = new Random();
+
+    List<ContractEntity> contracts = contractRepository.findAll().stream()
+        .filter(c -> ObjectUtils.isNotEmpty(c.getContractBranches()))
+        .map(contract -> {
+          contract.getContractBranches().forEach(cb -> {
+            // Eğer zaten cover'ları varsa skip et
+            if (ObjectUtils.isNotEmpty(cb.getContractCovers())) {
+              return;
+            }
+
+            BranchEnum branchEnum = cb.getBranchEnum();
+            Set<CoverEnum> possibleCovers = branchEnum.getCoverEnums();
+
+            // Kaç cover seçilecek? 1 .. possibleCovers.size()
+            int coverCount = 1 + random.nextInt(possibleCovers.size());
+
+            // CoverEnum listesini karıştırıp subset seçiyoruz
+            List<CoverEnum> shuffled = new ArrayList<>(possibleCovers);
+            Collections.shuffle(shuffled);
+
+            Set<ContractCoverEntity> covers = IntStream.range(0, coverCount)
+                .mapToObj(i -> ContractCoverEntity.builder()
+                    .id(UUID.randomUUID())
+                    .coverEnum(shuffled.get(i))
+                    .premiumAmount(BigDecimal.valueOf(
+                        faker.number().randomDouble(2, 10_000, 500_000)
+                    ))
+                    .contractBranch(cb)
+                    .contract(contract)
+                    .build())
+                .collect(Collectors.toSet());
+
+            cb.setContractCovers(covers);
+          });
+          return contract;
+        })
+        .toList();
+
+    contractRepository.saveAll(contracts);
   }
 }

@@ -39,7 +39,7 @@ public class ContractEntity {
   private ContractStatusEnum contractStatus;
 
   @OneToMany(mappedBy = "contract", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-  private Set<ContractBranchEntity> coverages;
+  private Set<ContractBranchEntity> contractBranches;
 
   @OneToMany(mappedBy = "contract", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
   private Set<LayerEntity> layers;

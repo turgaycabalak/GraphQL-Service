@@ -16,7 +16,7 @@ public record ContractResponse(
     Integer endorsementNo,
     ContractStatusEnum contractStatus,
 
-    List<CoverageResponse> coverages,
+    List<ContractBranchResponse> contractBranches,
     List<LayerResponse> layers,
     ContractDetailResponse contractDetail
 ) {

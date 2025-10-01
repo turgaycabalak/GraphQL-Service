@@ -9,6 +9,19 @@ enum BranchEnum {
     CARGO
 }
 
+enum CoverEnum {
+    LIVESTOCK
+    POULTRY
+    FLOOD
+    GREENHOUSE
+    GLASS
+    PERSONAL_ACCIDENT
+    CERTIFICATION
+    CMR
+    FIDELITY
+    CARGO
+}
+
 type Contract {
     id: ID!
     contractName: String
@@ -16,15 +29,22 @@ type Contract {
     renewalNo: Int
     endorsementNo: Int
     contractStatus: ContractStatusEnum
-    coverages: [ContractBranch!]
+    contractBranches: [ContractBranch!]
     layers: [Layer!]
     contractDetail: ContractDetail
 }
 
 type ContractBranch {
     id: ID!
-    branchEnum: BranchEnum!
-    premiumAmount: Float!
+    branchEnum: BranchEnum
+    premiumAmount: Float
+    contractCovers: [ContractCover!]
+}
+
+type ContractCover {
+    id: ID!
+    coverEnum: CoverEnum
+    premiumAmount: Float
 }
 
 type Layer {
