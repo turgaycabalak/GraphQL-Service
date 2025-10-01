@@ -7,6 +7,7 @@ import graphql.schema.SelectedField;
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,7 +26,6 @@ public class GraphQLFieldCollector {
   public static final String ENTITY_PATH = "com.graph.graphservice.entity";
   private static final Set<String> IGNORED_FIELDS = Set.of("__typename");
 
-
   public Map<Class<?>, Set<String>> collectFields(DataFetchingEnvironment env,
                                                   Class<?> rootEntityClass) {
     Map<Class<?>, Set<String>> selectedFields = new HashMap<>();
@@ -34,7 +34,7 @@ public class GraphQLFieldCollector {
     log.info("=== GraphQL Field Collection ===");
     log.info("Root entity: {}", rootEntityClass.getSimpleName());
 
-    processSelectionSet(selectionSet, rootEntityClass, selectedFields, new HashSet<>());
+    processSelectionSet(selectionSet, rootEntityClass, selectedFields, "");
 
     selectedFields.forEach((entityClass, fields) ->
         log.info("Entity: {} -> Fields: {}", entityClass.getSimpleName(), fields));
@@ -45,13 +45,7 @@ public class GraphQLFieldCollector {
   private void processSelectionSet(DataFetchingFieldSelectionSet selectionSet,
                                    Class<?> currentEntityClass,
                                    Map<Class<?>, Set<String>> selectedFields,
-                                   Set<Class<?>> processedClasses) {
-
-    // Circular reference önleme
-    if (processedClasses.contains(currentEntityClass)) {
-      return;
-    }
-    processedClasses.add(currentEntityClass);
+                                   String currentPath) {
 
     Set<String> currentFields = selectedFields.computeIfAbsent(currentEntityClass, k -> new HashSet<>());
 
@@ -61,6 +55,8 @@ public class GraphQLFieldCollector {
       if (IGNORED_FIELDS.contains(fieldName)) {
         continue;
       }
+
+      String fullFieldPath = currentPath.isEmpty() ? fieldName : currentPath + "." + fieldName;
 
       try {
         // Field mevcut entity'de var mı kontrol et
@@ -76,7 +72,7 @@ public class GraphQLFieldCollector {
 
           if (subSelection != null && !subSelection.getFields().isEmpty()) {
             // Alt field'ları target entity için process et
-            processSelectionSet(subSelection, targetClass, selectedFields, new HashSet<>(processedClasses));
+            processSelectionSet(subSelection, targetClass, selectedFields, fullFieldPath);
           }
         } else {
           // Basit field - direkt ekle
@@ -84,11 +80,15 @@ public class GraphQLFieldCollector {
         }
 
       } catch (NoSuchFieldException e) {
-        log.warn("Field '{}' not found in entity: {}", fieldName, currentEntityClass.getSimpleName());
+        // Bu field bu entity'de yok, bu nested bir field olabilir
+        // Sadece debug seviyesinde loglayabilirsiniz
+        log.debug("Field '{}' not found in entity: {} (path: {})",
+            fieldName, currentEntityClass.getSimpleName(), fullFieldPath);
       }
     }
   }
 
+  // Diğer metodlar aynı kalacak...
   private boolean isRelationshipField(Field field) {
     Class<?> fieldType = field.getType();
 
@@ -116,7 +116,8 @@ public class GraphQLFieldCollector {
         || clazz == Float.class
         || clazz == Boolean.class
         || clazz == BigDecimal.class
-        || clazz == UUID.class;
+        || clazz == UUID.class
+        || clazz == LocalDateTime.class; // Entity'lerinizde kullanılan diğer basit type'lar
   }
 
   private boolean isEntityClass(Class<?> clazz) {
