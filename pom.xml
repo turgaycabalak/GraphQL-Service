@@ -21,6 +21,7 @@
         <org.mapstruct.version>1.6.3</org.mapstruct.version>
         <maven.compiler.source>${java.version}</maven.compiler.source>
         <maven.compiler.target>${java.version}</maven.compiler.target>
+        <p6spy.version>3.9.1</p6spy.version>
     </properties>
 
     <dependencies>
@@ -70,6 +71,12 @@
             <version>1.0.2</version>
         </dependency>
 
+        <dependency>
+            <groupId>p6spy</groupId>
+            <artifactId>p6spy</artifactId>
+            <version>${p6spy.version}</version>
+            <scope>compile</scope>
+        </dependency>
     </dependencies>
 
 

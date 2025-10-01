@@ -1,0 +1,12 @@
+SQL | 1759237321594 | I | p6spy -> | MSG: (TYPE:statement, COST:7ms, CONN:0) SQL:
+select * from information_schema.sequences
+SQL | 1759237321692 | I | p6spy -> | MSG: (TYPE:statement, COST:1ms, CONN:0) SQL:
+select * from "graph"."contract" where 1=0
+SQL | 1759237321753 | I | p6spy -> | MSG: (TYPE:statement, COST:1ms, CONN:0) SQL:
+select * from "graph"."contract" where 1=0
+SQL | 1759237321814 | I | p6spy -> | MSG: (TYPE:statement, COST:0ms, CONN:0) SQL:
+select * from "graph"."contract" where 1=0
+SQL | 1759237321817 | I | p6spy -> | MSG: (TYPE:statement, COST:0ms, CONN:0) SQL:
+select * from "graph"."layer" where 1=0
+SQL | 1759237337632 | I | p6spy -> | MSG: (TYPE:statement, COST:1ms, CONN:0) SQL:
+select ce1_0.contract_no,ce1_0.contract_name,ce1_0.id,l1_0.layer_order,l1_0.id from graph.contract ce1_0 left join graph.layer l1_0 on ce1_0.id=l1_0.contract_id where ce1_0.id='e1a96fdb-ade1-49a9-a05b-b2517654e380'

@@ -36,5 +36,6 @@ type Query {
     getContract(contractId: ID!): Contract
     getContractDynamicSql(contractId: ID!): Contract
     getContractDynamicSqlV2(contractId: ID!): Contract
+    getContractDynamicSqlV3(contractId: ID!): Contract
     getAllContracts: [Contract!]!
 }
