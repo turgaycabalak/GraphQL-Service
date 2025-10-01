@@ -36,10 +36,31 @@ public class GraphQLFieldCollector {
 
     processSelectionSet(selectionSet, rootEntityClass, selectedFields, "");
 
+    // Tüm entity'ler için ID field'ını otomatik ekle
+    automaticallyAddIdFields(selectedFields);
+
     selectedFields.forEach((entityClass, fields) ->
         log.info("Entity: {} -> Fields: {}", entityClass.getSimpleName(), fields));
 
     return selectedFields;
+  }
+
+  private void automaticallyAddIdFields(Map<Class<?>, Set<String>> selectedFields) {
+    for (Map.Entry<Class<?>, Set<String>> entry : selectedFields.entrySet()) {
+      Class<?> entityClass = entry.getKey();
+      Set<String> fields = entry.getValue();
+
+      // Eğer bu entity'de "id" field'ı varsa ve henüz eklenmemişse ekle
+      try {
+        entityClass.getDeclaredField("id");
+        if (!fields.contains("id")) {
+          fields.add("id");
+          log.debug("Automatically added 'id' field for: {}", entityClass.getSimpleName());
+        }
+      } catch (NoSuchFieldException e) {
+        log.debug("Entity {} doesn't have 'id' field, skipping auto-add", entityClass.getSimpleName());
+      }
+    }
   }
 
   private void processSelectionSet(DataFetchingFieldSelectionSet selectionSet,
@@ -81,7 +102,6 @@ public class GraphQLFieldCollector {
 
       } catch (NoSuchFieldException e) {
         // Bu field bu entity'de yok, bu nested bir field olabilir
-        // Sadece debug seviyesinde loglayabilirsiniz
         log.debug("Field '{}' not found in entity: {} (path: {})",
             fieldName, currentEntityClass.getSimpleName(), fullFieldPath);
       }

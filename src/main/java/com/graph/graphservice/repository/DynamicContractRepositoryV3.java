@@ -155,13 +155,19 @@ public class DynamicContractRepositoryV3 {
       return;
     }
 
-    // Entity ID'sini al ve cache kontrolü yap
-    Object entityId = tuple.get(prefix + "id");
-    if (entityId != null && entityCache.containsKey(entityId)) {
-      return; // Bu entity zaten işlendi
+    // Entity ID'sini al (eğer varsa)
+    Object entityId = null;
+    try {
+      entityId = tuple.get(prefix + "id");
+    } catch (Exception e) {
+      log.debug("No ID field found for entity: {}", entityClass.getSimpleName());
     }
 
+    // Cache kontrolü - sadece ID varsa yap
     if (entityId != null) {
+      if (entityCache.containsKey(entityId)) {
+        return; // Bu entity zaten işlendi
+      }
       entityCache.put(entityId, currentEntity);
     }
 
@@ -181,17 +187,22 @@ public class DynamicContractRepositoryV3 {
         Class<?> targetClass = getTargetClass(entityClass, field);
         String newPrefix = prefix + field + "_";
 
-        Object relatedEntityId = tuple.get(newPrefix + "id");
+        Object relatedEntityId = null;
+        try {
+          relatedEntityId = tuple.get(newPrefix + "id");
+        } catch (Exception e) {
+          log.debug("No ID field found for related entity: {}", targetClass.getSimpleName());
+        }
 
-        if (relatedEntityId != null) {
+        if (relatedEntityId != null || shouldProcessWithoutId(targetClass)) {
           Object relatedEntity = targetClass.getDeclaredConstructor().newInstance();
 
           // Eğer collection ilişkisi ise
           if (isCollectionField(entityClass, field)) {
             Set<Object> collection = getOrCreateCollection(currentEntity, field);
 
-            // Aynı related entity collection'da var mı kontrol et
-            if (!isEntityInCollection(collection, relatedEntityId)) {
+            // ID yoksa veya collection'da yoksa ekle
+            if (relatedEntityId == null || !isEntityInCollection(collection, relatedEntityId)) {
               processTuple(tuple, relatedEntity, targetClass, selectedFields, entityCache, newPrefix);
               collection.add(relatedEntity);
               setBackReference(currentEntity, relatedEntity, field, entityClass);
@@ -205,6 +216,12 @@ public class DynamicContractRepositoryV3 {
         }
       }
     }
+  }
+
+  private boolean shouldProcessWithoutId(Class<?> entityClass) {
+    // ID'siz de işlem yapılması gereken entity'ler için kontrol
+    // Örneğin, basit value object'ler için true dönebilir
+    return false; // Varsayılan olarak false - güvenli yaklaşım
   }
 
   private boolean isRelationshipField(Class<?> entityClass, String fieldName) {
