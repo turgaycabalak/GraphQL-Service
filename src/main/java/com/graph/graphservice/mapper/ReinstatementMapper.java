@@ -10,7 +10,6 @@ import com.graph.graphservice.entity.ReinstatementEntity;
 import org.apache.commons.lang3.ObjectUtils;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
 import org.mapstruct.factory.Mappers;
 
@@ -29,7 +28,7 @@ public interface ReinstatementMapper {
       //responses.sort(Comparator.comparingInt(ReinstatementResponse::layerOrder)
       //    .thenComparingInt(ReinstatementResponse::reinstatementOrder));
 
-      responses.sort(Comparator.comparing(ReinstatementResponse::id));
+      responses.sort(Comparator.comparingInt(ReinstatementResponse::reinstatementOrder));
     }
   }
 }

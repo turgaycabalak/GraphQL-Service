@@ -11,10 +11,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Tuple;
+import jakarta.persistence.TupleElement;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.CriteriaQuery;
 import jakarta.persistence.criteria.From;
@@ -23,6 +25,10 @@ import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Selection;
 
+import com.graph.graphservice.aspect.ArtificialRelation;
+import com.graph.graphservice.entity.ContractEntity;
+import com.graph.graphservice.entity.LayerEntity;
+import com.graph.graphservice.entity.ReinstatementEntity;
 import com.graph.graphservice.utils.GraphQLFieldCollector;
 
 import lombok.RequiredArgsConstructor;
@@ -36,7 +42,6 @@ import org.springframework.stereotype.Repository;
 public class DynamicContractRepositoryV3 {
   private final EntityManager entityManager;
 
-
   public <T> T findEntityDynamic(UUID entityId,
                                  Class<T> entityClass,
                                  Map<Class<?>, Set<String>> selectedFields) {
@@ -46,6 +51,10 @@ public class DynamicContractRepositoryV3 {
       return null;
     }
 
+    Map<Class<?>, Set<String>> filteredFields = selectedFields.entrySet().stream()
+        .filter(entry -> isEntityClass(entry.getKey()))
+        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+
     CriteriaBuilder cb = entityManager.getCriteriaBuilder();
     CriteriaQuery<Tuple> cq = cb.createTupleQuery();
     Root<T> root = cq.from(entityClass);
@@ -53,10 +62,11 @@ public class DynamicContractRepositoryV3 {
     List<Selection<?>> selections = new ArrayList<>();
     Map<Class<?>, Map<Object, Object>> entityMaps = new HashMap<>();
 
-    buildSelectionsRecursively(root, selections, selectedFields, entityMaps, "");
+    buildSelectionsRecursively(root, selections, filteredFields, entityMaps, "");
 
     cq.multiselect(selections)
-        .where(cb.equal(root.get("id"), entityId));
+        .where(cb.equal(root.get("id"), entityId))
+        .distinct(true);
 
     try {
       List<Tuple> result = entityManager.createQuery(cq).getResultList();
@@ -65,10 +75,67 @@ public class DynamicContractRepositoryV3 {
         return null;
       }
 
-      return mapResultToEntity(result, entityClass, selectedFields, entityMaps);
+      logTupleContents(result);
+      T mappedEntity = mapResultToEntity(result, entityClass, filteredFields, entityMaps);
+
+      logMappedEntity(mappedEntity);
+
+      return mappedEntity;
     } catch (Exception e) {
       log.error("Error executing dynamic query for {}: {}", entityClass.getSimpleName(), e.getMessage(), e);
       throw new RuntimeException("Query execution failed", e);
+    }
+  }
+
+  private void logMappedEntity(Object entity) {
+    if (entity != null && log.isDebugEnabled()) {
+      log.debug("=== Mapped Entity Contents ===");
+      log.debug("Entity type: {}", entity.getClass().getSimpleName());
+
+      try {
+        if (entity instanceof ContractEntity) {
+          ContractEntity contract = (ContractEntity) entity;
+          log.debug("Contract ID: {}", contract.getId());
+          log.debug("Contract Name: {}", contract.getContractName());
+          log.debug("Contract No: {}", contract.getContractNo());
+
+          if (contract.getLayers() != null) {
+            log.debug("Layers count: {}", contract.getLayers().size());
+            for (LayerEntity layer : contract.getLayers()) {
+              log.debug("Layer ID: {}, Order: {}", layer.getId(), layer.getLayerOrder());
+              if (layer.getReinstatements() != null) {
+                log.debug("  Reinstatements count: {}", layer.getReinstatements().size());
+                for (ReinstatementEntity reinst : layer.getReinstatements()) {
+                  log.debug("    Reinstatement ID: {}, Order: {}, Ratio: {}",
+                      reinst.getId(), reinst.getReinstatementOrder(), reinst.getReinstatementRatio());
+                }
+              } else {
+                log.debug("  Reinstatements: null");
+              }
+            }
+          } else {
+            log.debug("Layers: null");
+          }
+        }
+      } catch (Exception e) {
+        log.debug("Error logging mapped entity: {}", e.getMessage());
+      }
+    }
+  }
+
+  private void logTupleContents(List<Tuple> result) {
+    if (!result.isEmpty() && log.isDebugEnabled()) {
+      log.debug("=== Tuple Contents ===");
+      for (int i = 0; i < result.size(); i++) {
+        log.debug("--- Tuple {} ---", i);
+        Tuple tuple = result.get(i);
+        for (TupleElement<?> element : tuple.getElements()) {
+          String alias = element.getAlias();
+          Object value = tuple.get(alias);
+          log.debug("Alias: {} -> Value: {} (Type: {})",
+              alias, value, value != null ? value.getClass().getSimpleName() : "null");
+        }
+      }
     }
   }
 
@@ -90,33 +157,38 @@ public class DynamicContractRepositoryV3 {
 
     // Mevcut entity'nin field'larını ekle
     for (String field : fields) {
-      if (!isRelationshipField(currentClass, field)) {
+      String cleanFieldName = cleanFieldName(field);
+
+      if (!isRelationshipField(currentClass, cleanFieldName)) {
         try {
-          selections.add(from.get(field).alias(prefix + field));
-          log.debug("Added simple field: {}{}", prefix, field);
+          selections.add(from.get(cleanFieldName).alias(prefix + cleanFieldName));
+          log.debug("Added simple field: {}{}", prefix, cleanFieldName);
         } catch (IllegalArgumentException e) {
-          log.warn("Field '{}' not found in entity: {}", field, currentClass.getSimpleName());
+          log.warn("Field '{}' not found in entity: {}", cleanFieldName, currentClass.getSimpleName());
         }
       }
     }
 
     // İlişkileri işle
     for (String field : fields) {
-      if (isRelationshipField(currentClass, field)) {
-        try {
-          Class<?> targetClass = getTargetClass(currentClass, field);
-          String newPrefix = prefix + field + "_";
+      String cleanFieldName = cleanFieldName(field);
+      boolean isArtificial = isArtificialRelationField(field);
 
-          Join<?, ?> join = from.join(field, JoinType.LEFT);
+      if (isRelationshipField(currentClass, cleanFieldName)) {
+        try {
+          Class<?> targetClass = getTargetClass(currentClass, cleanFieldName);
+          String newPrefix = prefix + cleanFieldName + "_";
+
+          Join<?, ?> join = from.join(cleanFieldName, JoinType.LEFT);
           entityMaps.putIfAbsent(targetClass, new HashMap<>());
 
-          log.debug("Processing relationship: {} -> {} with prefix: {}",
-              currentClass.getSimpleName(), targetClass.getSimpleName(), newPrefix);
+          log.debug("Processing relationship: {} -> {} with prefix: {} (Artificial: {})",
+              currentClass.getSimpleName(), targetClass.getSimpleName(), newPrefix, isArtificial);
 
           buildSelectionsRecursively(join, selections, selectedFields, entityMaps, newPrefix);
         } catch (Exception e) {
           log.warn("Error processing relationship field '{}' in {}: {}",
-              field, currentClass.getSimpleName(), e.getMessage());
+              cleanFieldName, currentClass.getSimpleName(), e.getMessage());
         }
       }
     }
@@ -129,99 +201,139 @@ public class DynamicContractRepositoryV3 {
                                   Map<Class<?>, Map<Object, Object>> entityMaps) {
 
     try {
-      T rootEntity = entityClass.getDeclaredConstructor().newInstance();
-      Map<Object, Object> entityCache = new HashMap<>();
+      // Tüm entity'leri toplamak için yeni bir yaklaşım
+      Map<String, Object> entityCache = new HashMap<>();
+      T rootEntity = null;
 
       for (Tuple tuple : result) {
-        processTuple(tuple, rootEntity, entityClass, selectedFields, entityCache, "");
+        rootEntity = processTupleAndBuildEntities(tuple, entityClass, selectedFields, entityCache, "");
       }
 
       return rootEntity;
     } catch (Exception e) {
+      log.error("Error mapping result to entity {}: {}", entityClass.getSimpleName(), e.getMessage(), e);
       throw new RuntimeException("Entity mapping failed for: " + entityClass.getSimpleName(), e);
     }
   }
 
   @SuppressWarnings("unchecked")
-  private void processTuple(Tuple tuple,
-                            Object currentEntity,
-                            Class<?> entityClass,
-                            Map<Class<?>, Set<String>> selectedFields,
-                            Map<Object, Object> entityCache,
-                            String prefix) throws Exception {
+  private <T> T processTupleAndBuildEntities(Tuple tuple,
+                                             Class<T> entityClass,
+                                             Map<Class<?>, Set<String>> selectedFields,
+                                             Map<String, Object> entityCache,
+                                             String prefix) throws Exception {
 
-    Set<String> fields = selectedFields.get(entityClass);
-    if (fields == null) {
-      return;
-    }
+    // Entity ID'sini al
+    Object entityId = getValueSafely(tuple, prefix + "id");
+    String entityKey = createCacheKey(entityId, prefix, entityClass);
 
-    // Entity ID'sini al (eğer varsa)
-    Object entityId = null;
-    try {
-      entityId = tuple.get(prefix + "id");
-    } catch (Exception e) {
-      log.debug("No ID field found for entity: {}", entityClass.getSimpleName());
-    }
+    log.debug("Processing entity: {}, ID: {}, Prefix: {}",
+        entityClass.getSimpleName(), entityId, prefix);
 
-    // Cache kontrolü - sadece ID varsa yap
-    if (entityId != null) {
-      if (entityCache.containsKey(entityId)) {
-        return; // Bu entity zaten işlendi
-      }
-      entityCache.put(entityId, currentEntity);
-    }
+    // Cache'te varsa kullan, yoksa oluştur
+    T entity;
+    if (entityCache.containsKey(entityKey)) {
+      entity = (T) entityCache.get(entityKey);
+      log.debug("Using cached entity: {}", entityKey);
+    } else {
+      entity = entityClass.getDeclaredConstructor().newInstance();
+      entityCache.put(entityKey, entity);
+      log.debug("Created new entity: {}", entityKey);
 
-    // Basit field'ları set et
-    for (String field : fields) {
-      if (!isRelationshipField(entityClass, field)) {
-        Object value = tuple.get(prefix + field);
-        if (value != null) {
-          setFieldValue(currentEntity, field, value);
-        }
-      }
-    }
+      // Basit field'ları set et
+      Set<String> fields = selectedFields.get(entityClass);
+      if (fields != null) {
+        for (String field : fields) {
+          String cleanFieldName = cleanFieldName(field);
+          boolean isArtificial = isArtificialRelationField(field);
 
-    // İlişkileri işle
-    for (String field : fields) {
-      if (isRelationshipField(entityClass, field)) {
-        Class<?> targetClass = getTargetClass(entityClass, field);
-        String newPrefix = prefix + field + "_";
-
-        Object relatedEntityId = null;
-        try {
-          relatedEntityId = tuple.get(newPrefix + "id");
-        } catch (Exception e) {
-          log.debug("No ID field found for related entity: {}", targetClass.getSimpleName());
-        }
-
-        if (relatedEntityId != null || shouldProcessWithoutId(targetClass)) {
-          Object relatedEntity = targetClass.getDeclaredConstructor().newInstance();
-
-          // Eğer collection ilişkisi ise
-          if (isCollectionField(entityClass, field)) {
-            Set<Object> collection = getOrCreateCollection(currentEntity, field);
-
-            // ID yoksa veya collection'da yoksa ekle
-            if (relatedEntityId == null || !isEntityInCollection(collection, relatedEntityId)) {
-              processTuple(tuple, relatedEntity, targetClass, selectedFields, entityCache, newPrefix);
-              collection.add(relatedEntity);
-              setBackReference(currentEntity, relatedEntity, field, entityClass);
+          if (!isRelationshipField(entityClass, cleanFieldName)) {
+            Object value = getValueSafely(tuple, prefix + cleanFieldName);
+            if (value != null) {
+              setFieldValue(entity, cleanFieldName, value);
+              log.debug("Set field {}{} to: {}", prefix, cleanFieldName, value);
             }
-          } else {
-            // Single relation
-            processTuple(tuple, relatedEntity, targetClass, selectedFields, entityCache, newPrefix);
-            setFieldValue(currentEntity, field, relatedEntity);
-            setBackReference(currentEntity, relatedEntity, field, entityClass);
           }
         }
       }
     }
+
+    // İlişkileri işle - SADECE BASİT FIELDLAR SET EDİLDİKTEN SONRA
+    Set<String> fields = selectedFields.get(entityClass);
+    if (fields != null) {
+      for (String field : fields) {
+        String cleanFieldName = cleanFieldName(field);
+        boolean isArtificial = isArtificialRelationField(field);
+
+        if (isRelationshipField(entityClass, cleanFieldName)) {
+          Class<?> targetClass = getTargetClass(entityClass, cleanFieldName);
+          String newPrefix = prefix + cleanFieldName + "_";
+
+          Object relatedEntityId = getValueSafely(tuple, newPrefix + "id");
+
+          log.debug("Processing relationship - Field: {}, Target: {}, Related ID: {}, Artificial: {}",
+              cleanFieldName, targetClass.getSimpleName(), relatedEntityId, isArtificial);
+
+          if (relatedEntityId != null) {
+            Object relatedEntity =
+                processTupleAndBuildEntities(tuple, targetClass, selectedFields, entityCache, newPrefix);
+
+            if (relatedEntity != null) {
+              // Collection ilişkisi
+              if (isCollectionField(entityClass, cleanFieldName)) {
+                Collection<Object> collection = getOrCreateCollection(entity, cleanFieldName);
+
+                // Collection'da bu entity var mı kontrol et
+                if (!isEntityInCollection(collection, relatedEntityId)) {
+                  collection.add(relatedEntity);
+
+                  // Artificial relation değilse back reference set et
+                  if (!isArtificial) {
+                    setBackReference(entity, relatedEntity, cleanFieldName, entityClass);
+                  }
+                  log.debug("Added to collection: {} (Artificial: {})",
+                      createCacheKey(relatedEntityId, newPrefix, targetClass), isArtificial);
+                }
+              } else {
+                // Single relation
+                setFieldValue(entity, cleanFieldName, relatedEntity);
+
+                // Artificial relation değilse back reference set et
+                if (!isArtificial) {
+                  setBackReference(entity, relatedEntity, cleanFieldName, entityClass);
+                }
+                log.debug("Set single relation: {} (Artificial: {})",
+                    createCacheKey(relatedEntityId, newPrefix, targetClass), isArtificial);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return entity;
   }
 
-  private boolean shouldProcessWithoutId(Class<?> entityClass) {
-    // ID'siz de işlem yapılması gereken entity'ler için kontrol
-    // Örneğin, basit value object'ler için true dönebilir
-    return false; // Varsayılan olarak false - güvenli yaklaşım
+  // Yardımcı metodlar
+  private String cleanFieldName(String field) {
+    return field.replace("::ARTIFICIAL", "");
+  }
+
+  private boolean isArtificialRelationField(String field) {
+    return field.contains("::ARTIFICIAL");
+  }
+
+  private Object getValueSafely(Tuple tuple, String alias) {
+    try {
+      Object value = tuple.get(alias);
+      return value;
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
+
+  private String createCacheKey(Object entityId, String prefix, Class<?> entityClass) {
+    return entityClass.getSimpleName() + "_" + prefix + "_" + (entityId != null ? entityId.toString() : "null");
   }
 
   private boolean isRelationshipField(Class<?> entityClass, String fieldName) {
@@ -229,8 +341,7 @@ public class DynamicContractRepositoryV3 {
       Field field = entityClass.getDeclaredField(fieldName);
       Class<?> fieldType = field.getType();
 
-      // Basit type'ları eledik
-      if (GraphQLFieldCollector.isSimpleType(fieldType)) {
+      if (GraphQLFieldCollector.isSimpleType(fieldType) || fieldType.isEnum()) {
         return false;
       }
 
@@ -238,10 +349,7 @@ public class DynamicContractRepositoryV3 {
       boolean isCollection = Collection.class.isAssignableFrom(fieldType);
       boolean isEntityCollection = isCollection && isCollectionOfEntities(field);
 
-      boolean isRelationship = isEntity || isEntityCollection;
-      log.debug("Field {} in {} -> isRelationship: {}", fieldName, entityClass.getSimpleName(), isRelationship);
-
-      return isRelationship;
+      return isEntity || isEntityCollection;
     } catch (NoSuchFieldException e) {
       log.warn("Field '{}' not found in entity: {}", fieldName, entityClass.getSimpleName());
       return false;
@@ -249,19 +357,14 @@ public class DynamicContractRepositoryV3 {
   }
 
   private boolean isEntityClass(Class<?> clazz) {
-    // Package kontrolü - null olabilir
     Package pkg = clazz.getPackage();
     if (pkg == null) {
-      log.debug("Class {} has no package, not an entity", clazz.getSimpleName());
       return false;
     }
 
     String packageName = pkg.getName();
     boolean isEntity = packageName.startsWith(GraphQLFieldCollector.ENTITY_PATH) ||
         clazz.isAnnotationPresent(Entity.class);
-
-    log.debug("Class: {} -> Package: {} -> isEntity: {}",
-        clazz.getSimpleName(), packageName, isEntity);
 
     return isEntity;
   }
@@ -271,9 +374,13 @@ public class DynamicContractRepositoryV3 {
       return false;
     }
 
-    ParameterizedType genericType = (ParameterizedType) field.getGenericType();
-    Class<?> collectionType = (Class<?>) genericType.getActualTypeArguments()[0];
-    return isEntityClass(collectionType);
+    try {
+      ParameterizedType genericType = (ParameterizedType) field.getGenericType();
+      Class<?> collectionType = (Class<?>) genericType.getActualTypeArguments()[0];
+      return isEntityClass(collectionType);
+    } catch (Exception e) {
+      return false;
+    }
   }
 
   private boolean isCollectionField(Class<?> entityClass, String fieldName) {
@@ -283,32 +390,6 @@ public class DynamicContractRepositoryV3 {
     } catch (NoSuchFieldException e) {
       return false;
     }
-  }
-
-  @SuppressWarnings("unchecked")
-  private Set<Object> getOrCreateCollection(Object entity, String fieldName) throws Exception {
-    Field field = entity.getClass().getDeclaredField(fieldName);
-    field.setAccessible(true);
-
-    Set<Object> collection = (Set<Object>) field.get(entity);
-    if (collection == null) {
-      collection = new HashSet<>();
-      field.set(entity, collection);
-    }
-    return collection;
-  }
-
-  private boolean isEntityInCollection(Set<Object> collection, Object entityId) {
-    return collection.stream()
-        .anyMatch(entity -> {
-          try {
-            Field idField = entity.getClass().getDeclaredField("id");
-            idField.setAccessible(true);
-            return entityId.equals(idField.get(entity));
-          } catch (Exception e) {
-            return false;
-          }
-        });
   }
 
   private Class<?> getTargetClass(Class<?> entityClass, String fieldName) {
@@ -329,29 +410,131 @@ public class DynamicContractRepositoryV3 {
       Field field = target.getClass().getDeclaredField(fieldName);
       field.setAccessible(true);
 
-      // Type conversion gerekirse burada yapılabilir
       if (value != null && !field.getType().isAssignableFrom(value.getClass())) {
         value = convertType(value, field.getType());
       }
 
-      field.set(target, value);
+      if (value != null) {
+        field.set(target, value);
+      }
     } catch (Exception e) {
+      log.error("Field set failed: {} in {}. Value: {}. Error: {}",
+          fieldName, target.getClass().getSimpleName(), value, e.getMessage());
       throw new RuntimeException("Field set failed: " + fieldName + " in " + target.getClass().getSimpleName(), e);
     }
   }
 
   private Object convertType(Object value, Class<?> targetType) {
-    // Gerekli type conversion'ları burada yap
-    if (targetType == BigDecimal.class && value instanceof Number) {
-      return BigDecimal.valueOf(((Number) value).doubleValue());
+    // Enum conversion
+    if (targetType.isEnum() && value instanceof String) {
+      try {
+        return Enum.valueOf((Class<Enum>) targetType, (String) value);
+      } catch (Exception e) {
+        log.warn("Cannot convert {} to enum {}", value, targetType.getSimpleName());
+        return null;
+      }
     }
-    // Diğer conversion'lar...
+
+    // BigDecimal conversion
+    if (targetType == BigDecimal.class) {
+      if (value instanceof Number) {
+        return BigDecimal.valueOf(((Number) value).doubleValue());
+      } else if (value instanceof String) {
+        try {
+          return new BigDecimal((String) value);
+        } catch (Exception e) {
+          log.warn("Cannot convert {} to BigDecimal: {}", value, e.getMessage());
+          return null;
+        }
+      }
+    }
+
+    // UUID conversion
+    if (targetType == UUID.class && value instanceof String) {
+      try {
+        return UUID.fromString((String) value);
+      } catch (Exception e) {
+        log.warn("Cannot convert {} to UUID: {}", value, e.getMessage());
+        return null;
+      }
+    }
+
+    // Integer conversion
+    if (targetType == Integer.class && value instanceof Number) {
+      return ((Number) value).intValue();
+    }
+
+    // Long conversion
+    if (targetType == Long.class && value instanceof Number) {
+      return ((Number) value).longValue();
+    }
+
+    // Double conversion
+    if (targetType == Double.class && value instanceof Number) {
+      return ((Number) value).doubleValue();
+    }
+
+    // Float conversion
+    if (targetType == Float.class && value instanceof Number) {
+      return ((Number) value).floatValue();
+    }
+
     return value;
   }
 
+  @SuppressWarnings("unchecked")
+  private Collection<Object> getOrCreateCollection(Object entity, String fieldName) throws Exception {
+    Field field = entity.getClass().getDeclaredField(fieldName);
+    field.setAccessible(true);
+
+    Collection<Object> collection = (Collection<Object>) field.get(entity);
+    if (collection == null) {
+      if (Set.class.isAssignableFrom(field.getType())) {
+        collection = new HashSet<>();
+      } else if (List.class.isAssignableFrom(field.getType())) {
+        collection = new ArrayList<>();
+      } else {
+        collection = new HashSet<>();
+      }
+      field.set(entity, collection);
+    }
+    return collection;
+  }
+
+  private boolean isEntityInCollection(Collection<Object> collection, Object entityId) {
+    if (collection == null || entityId == null) {
+      return false;
+    }
+
+    return collection.stream()
+        .anyMatch(entity -> {
+          try {
+            Field idField = entity.getClass().getDeclaredField("id");
+            idField.setAccessible(true);
+            Object existingId = idField.get(entity);
+            return entityId.equals(existingId);
+          } catch (Exception e) {
+            return false;
+          }
+        });
+  }
+
   private void setBackReference(Object parent, Object child, String fieldName, Class<?> parentClass) {
-    // Bidirectional ilişkiler için back reference'ı set et
-    // Örnek: child.setParent(parent) gibi
-    // Bu kısım entity'lerinize özel olarak genişletilebilir
+    try {
+      Field[] childFields = child.getClass().getDeclaredFields();
+      for (Field childField : childFields) {
+        if (childField.getType().equals(parentClass) &&
+            !childField.isAnnotationPresent(ArtificialRelation.class)) {
+          childField.setAccessible(true);
+          childField.set(child, parent);
+          log.debug("Set back reference: {}.{} -> {}",
+              child.getClass().getSimpleName(), childField.getName(), parentClass.getSimpleName());
+          break;
+        }
+      }
+    } catch (Exception e) {
+      log.debug("Could not set back reference for {} -> {}: {}",
+          parentClass.getSimpleName(), child.getClass().getSimpleName(), e.getMessage());
+    }
   }
 }

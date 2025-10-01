@@ -6,6 +6,8 @@ import java.util.UUID;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
@@ -32,6 +34,12 @@ public class ContractEntity {
   private String contractNo;
   private Integer renewalNo;
   private Integer endorsementNo;
+
+  @Enumerated(EnumType.STRING)
+  private ContractStatusEnum contractStatus;
+
+  @OneToMany(mappedBy = "contract", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+  private Set<ContractBranch> coverages;
 
   @OneToMany(mappedBy = "contract", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
   private Set<LayerEntity> layers;

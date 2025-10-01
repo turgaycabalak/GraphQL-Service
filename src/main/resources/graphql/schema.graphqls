@@ -1,11 +1,30 @@
+enum ContractStatusEnum {
+    FINALIZED
+    DRAFT
+}
+
+enum BranchEnum {
+    EARTHQUAKE
+    FIRE
+    CARGO
+}
+
 type Contract {
     id: ID!
     contractName: String
     contractNo: String
     renewalNo: Int
     endorsementNo: Int
+    contractStatus: ContractStatusEnum
+    coverages: [ContractBranch!]
     layers: [Layer!]
     contractDetail: ContractDetail
+}
+
+type ContractBranch {
+    id: ID!
+    branchEnum: BranchEnum!
+    premiumAmount: Float!
 }
 
 type Layer {
