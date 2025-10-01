@@ -22,6 +22,7 @@ import com.graph.graphservice.entity.ContractStatusEnum;
 import com.graph.graphservice.entity.CoverEnum;
 import com.graph.graphservice.entity.LayerEntity;
 import com.graph.graphservice.entity.ReinstatementEntity;
+import com.graph.graphservice.repository.ContractBranchRepository;
 import com.graph.graphservice.repository.ContractRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -36,12 +37,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class ContractController {
   private final ContractRepository contractRepository;
+  private final ContractBranchRepository contractBranchRepository;
+  private final Random random = new Random();
+  private final Faker faker = new Faker();
+
 
   @GetMapping
   public List<ContractEntity> saveDummies() {
-    Faker faker = new Faker();
-    Random random = new Random();
-
     List<ContractEntity> contracts = IntStream.range(0, 50)
         .mapToObj(i -> {
           boolean isFinalized = i < 20; // İlk 20 tanesi FINALIZED olsun
@@ -127,46 +129,44 @@ public class ContractController {
 
   @GetMapping("/set-covers")
   public void setCovers() {
-    Faker faker = new Faker();
-    Random random = new Random();
-
-    List<ContractEntity> contracts = contractRepository.findAll().stream()
+    List<ContractBranchEntity> updatedBranches = contractRepository.findAll().stream()
         .filter(c -> ObjectUtils.isNotEmpty(c.getContractBranches()))
-        .map(contract -> {
-          contract.getContractBranches().forEach(cb -> {
-            // Eğer zaten cover'ları varsa skip et
-            if (ObjectUtils.isNotEmpty(cb.getContractCovers())) {
-              return;
-            }
+        .flatMap(contract -> contract.getContractBranches().stream())
+        .filter(cb -> ObjectUtils.isEmpty(cb.getContractCovers())) // sadece covers olmayan branchler
+        .map(cb -> {
+          BranchEnum branchEnum = cb.getBranchEnum();
+          Set<CoverEnum> possibleCovers = branchEnum.getCoverEnums();
 
-            BranchEnum branchEnum = cb.getBranchEnum();
-            Set<CoverEnum> possibleCovers = branchEnum.getCoverEnums();
+          // 1 .. N adet cover seçelim
+          int coverCount = 1 + random.nextInt(possibleCovers.size());
+          List<CoverEnum> shuffled = new ArrayList<>(possibleCovers);
+          Collections.shuffle(shuffled);
 
-            // Kaç cover seçilecek? 1 .. possibleCovers.size()
-            int coverCount = 1 + random.nextInt(possibleCovers.size());
+          Set<ContractCoverEntity> covers = IntStream.range(0, coverCount)
+              .mapToObj(i -> ContractCoverEntity.builder()
+                  .id(UUID.randomUUID())
+                  .coverEnum(shuffled.get(i))
+                  .premiumAmount(BigDecimal.valueOf(
+                      faker.number().randomDouble(2, 10_000, 500_000)
+                  ))
+                  .contractBranch(cb)
+                  .contract(cb.getContract())
+                  .build())
+              .collect(Collectors.toSet());
 
-            // CoverEnum listesini karıştırıp subset seçiyoruz
-            List<CoverEnum> shuffled = new ArrayList<>(possibleCovers);
-            Collections.shuffle(shuffled);
+          cb.setContractCovers(covers);
 
-            Set<ContractCoverEntity> covers = IntStream.range(0, coverCount)
-                .mapToObj(i -> ContractCoverEntity.builder()
-                    .id(UUID.randomUUID())
-                    .coverEnum(shuffled.get(i))
-                    .premiumAmount(BigDecimal.valueOf(
-                        faker.number().randomDouble(2, 10_000, 500_000)
-                    ))
-                    .contractBranch(cb)
-                    .contract(contract)
-                    .build())
-                .collect(Collectors.toSet());
+          // Branch'in premiumAmount = cover'ların toplamı
+          BigDecimal totalPremium = covers.stream()
+              .map(ContractCoverEntity::getPremiumAmount)
+              .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-            cb.setContractCovers(covers);
-          });
-          return contract;
+          cb.setPremiumAmount(totalPremium);
+
+          return cb;
         })
         .toList();
 
-    contractRepository.saveAll(contracts);
+    contractBranchRepository.saveAll(updatedBranches);
   }
 }
