@@ -127,7 +127,7 @@ public class GraphQLFieldCollector {
     return isEntity || isEntityCollection;
   }
 
-  private boolean isSimpleType(Class<?> clazz) {
+  public boolean isSimpleType(Class<?> clazz) {
     return clazz.isPrimitive()
         || clazz == String.class
         || clazz == Integer.class
@@ -137,7 +137,7 @@ public class GraphQLFieldCollector {
         || clazz == Boolean.class
         || clazz == BigDecimal.class
         || clazz == UUID.class
-        || clazz == LocalDateTime.class; // Entity'lerinizde kullanılan diğer basit type'lar
+        || clazz == LocalDateTime.class;
   }
 
   private boolean isEntityClass(Class<?> clazz) {

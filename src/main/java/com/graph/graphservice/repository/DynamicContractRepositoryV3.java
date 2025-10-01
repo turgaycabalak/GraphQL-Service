@@ -230,7 +230,7 @@ public class DynamicContractRepositoryV3 {
       Class<?> fieldType = field.getType();
 
       // Basit type'ları eledik
-      if (isSimpleType(fieldType)) {
+      if (GraphQLFieldCollector.isSimpleType(fieldType)) {
         return false;
       }
 
@@ -246,18 +246,6 @@ public class DynamicContractRepositoryV3 {
       log.warn("Field '{}' not found in entity: {}", fieldName, entityClass.getSimpleName());
       return false;
     }
-  }
-
-  private boolean isSimpleType(Class<?> clazz) {
-    return clazz.isPrimitive()
-        || clazz == String.class
-        || clazz == Integer.class
-        || clazz == Long.class
-        || clazz == Double.class
-        || clazz == Float.class
-        || clazz == Boolean.class
-        || clazz == BigDecimal.class
-        || clazz == UUID.class;
   }
 
   private boolean isEntityClass(Class<?> clazz) {
