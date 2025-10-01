@@ -26,7 +26,7 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 @Table(name = "contract_branch")
-public class ContractBranch {
+public class ContractBranchEntity {
   @Id
   @Column(columnDefinition = "UUID default gen_random_uuid()")
   private UUID id;

@@ -14,7 +14,7 @@ import java.util.stream.IntStream;
 
 import com.github.javafaker.Faker;
 import com.graph.graphservice.entity.BranchEnum;
-import com.graph.graphservice.entity.ContractBranch;
+import com.graph.graphservice.entity.ContractBranchEntity;
 import com.graph.graphservice.entity.ContractDetailEntity;
 import com.graph.graphservice.entity.ContractEntity;
 import com.graph.graphservice.entity.ContractStatusEnum;
@@ -69,10 +69,10 @@ public class ContractController {
             Collections.shuffle(availableBranches);
             int coverageCount = random.nextInt(3) + 1;
 
-            Set<ContractBranch> coverages = IntStream.range(0, coverageCount)
+            Set<ContractBranchEntity> coverages = IntStream.range(0, coverageCount)
                 .mapToObj(idx -> {
                   BranchEnum branch = availableBranches.get(idx);
-                  return ContractBranch.builder()
+                  return ContractBranchEntity.builder()
                       .id(UUID.randomUUID())
                       .branchEnum(branch)
                       .premiumAmount(BigDecimal.valueOf(faker.number().randomDouble(2, 10_000, 500_000)))
