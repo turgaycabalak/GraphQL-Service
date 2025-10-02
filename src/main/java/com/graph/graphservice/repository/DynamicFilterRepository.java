@@ -93,58 +93,15 @@ public class DynamicFilterRepository {
       return new ArrayList<>();
     }
 
-    CriteriaBuilder cb = entityManager.getCriteriaBuilder();
-    CriteriaQuery<Tuple> cq = cb.createTupleQuery();
-    Root<T> root = cq.from(entityClass);
+    // 1. AŞAMA: Sadece ana entity ID'lerini bul (PostgreSQL uyumlu)
+    List<UUID> entityIds = findEntityIds(entityClass, filter, page, size, sortFields);
 
-    // SELECT kısmı - dinamik field seçimi
-    List<Selection<?>> selections = new ArrayList<>();
-    Map<Class<?>, Map<Object, Object>> entityMaps = new HashMap<>();
-
-    buildSelectionsRecursively(root, selections, filteredFields, entityMaps, "");
-
-    log.info("Final selections: {}", selections.size());
-    selections.forEach(selection ->
-        log.debug("Selection: {}", selection.getAlias()));
-
-    cq.multiselect(selections);
-
-    // WHERE kısmı - filtreleme
-    if (filter != null) {
-      Predicate predicate = buildPredicateRecursively(cb, root, filter);
-      if (predicate != null) {
-        cq.where(predicate);
-        log.debug("Applied filter predicate");
-      }
+    if (entityIds.isEmpty()) {
+      return new ArrayList<>();
     }
 
-    // ORDER BY kısmı
-    if (sortFields != null && !sortFields.isEmpty()) {
-      List<Order> orders = buildOrderBy(cb, root, sortFields);
-      cq.orderBy(orders);
-      log.debug("Applied order by: {}", orders.size());
-    }
-
-    // DISTINCT ve pagination
-    cq.distinct(true);
-
-    TypedQuery<Tuple> query = entityManager.createQuery(cq);
-
-    // Pagination
-    if (page >= 0 && size > 0) {
-      query.setFirstResult(page * size);
-      query.setMaxResults(size);
-      log.debug("Set pagination - first: {}, max: {}", page * size, size);
-    }
-
-    List<Tuple> result = query.getResultList();
-    log.info("Query executed successfully, result size: {}", result.size());
-
-    // Tuple'dan entity'e dönüşüm
-    List<T> entities = mapResultsToEntities(result, entityClass, filteredFields, entityMaps);
-    log.info("Successfully mapped {} entities", entities.size());
-
-    return entities;
+    // 2. AŞAMA: ID'lerle birlikte tüm ilişkileri yükle
+    return findEntitiesWithRelationships(entityClass, entityIds, filteredFields, sortFields);
   }
 
   public <T> Long countEntities(Class<T> entityClass, BaseFilter filter) {
@@ -161,7 +118,6 @@ public class DynamicFilterRepository {
       Predicate predicate = buildPredicateRecursively(cb, root, filter);
       if (predicate != null) {
         cq.where(predicate);
-        log.debug("Applied filter predicate for count");
       }
     }
 
@@ -169,6 +125,122 @@ public class DynamicFilterRepository {
     log.info("Count result: {}", count);
 
     return count;
+  }
+
+  /**
+   * 1. Aşama: PostgreSQL uyumlu şekilde sadece ana entity ID'lerini bul
+   */
+  private <T> List<UUID> findEntityIds(Class<T> entityClass,
+                                       BaseFilter filter,
+                                       int page, int size,
+                                       List<String> sortFields) {
+
+    CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+
+    // PostgreSQL için: Önce ID'leri ve sıralama alanlarını seç, sonra ID'leri al
+    CriteriaQuery<Tuple> idQuery = cb.createTupleQuery();
+    Root<T> root = idQuery.from(entityClass);
+
+    // SELECT: ID ve sıralama için gerekli alanlar
+    List<Selection<?>> selections = new ArrayList<>();
+    selections.add(root.get("id").alias("id"));
+
+    // Sıralama alanlarını da seçime ekle (PostgreSQL gereksinimi)
+    if (sortFields != null && !sortFields.isEmpty()) {
+      for (String sortField : sortFields) {
+        String fieldName = sortField.startsWith("-") ? sortField.substring(1) : sortField;
+        try {
+          selections.add(root.get(fieldName).alias(fieldName));
+        } catch (IllegalArgumentException e) {
+          log.warn("Sort field '{}' not found in entity {}, skipping",
+              fieldName, entityClass.getSimpleName());
+        }
+      }
+    }
+
+    idQuery.multiselect(selections);
+    idQuery.distinct(true);
+
+    // WHERE kısmı - filtreleme
+    if (filter != null) {
+      Predicate predicate = buildPredicateRecursively(cb, root, filter);
+      if (predicate != null) {
+        idQuery.where(predicate);
+      }
+    }
+
+    // ORDER BY kısmı - PostgreSQL uyumlu
+    if (sortFields != null && !sortFields.isEmpty()) {
+      List<Order> orders = buildOrderBy(cb, root, sortFields);
+      idQuery.orderBy(orders);
+    }
+
+    TypedQuery<Tuple> query = entityManager.createQuery(idQuery);
+
+    // Pagination
+    if (page >= 0 && size > 0) {
+      query.setFirstResult(page * size);
+      query.setMaxResults(size);
+    }
+
+    List<Tuple> result = query.getResultList();
+
+    // Tuple'lardan sadece ID'leri al
+    List<UUID> ids = result.stream()
+        .map(tuple -> tuple.get("id", UUID.class))
+        .collect(Collectors.toList());
+
+    log.info("Found {} entity IDs for pagination", ids.size());
+    return ids;
+  }
+
+  /**
+   * 2. Aşama: ID listesiyle birlikte tüm ilişkileri yükle
+   */
+  private <T> List<T> findEntitiesWithRelationships(Class<T> entityClass,
+                                                    List<UUID> entityIds,
+                                                    Map<Class<?>, Set<String>> selectedFields,
+                                                    List<String> sortFields) {
+
+    if (entityIds.isEmpty()) {
+      return new ArrayList<>();
+    }
+
+    CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+    CriteriaQuery<Tuple> cq = cb.createTupleQuery();
+    Root<T> root = cq.from(entityClass);
+
+    // SELECT kısmı - dinamik field seçimi
+    List<Selection<?>> selections = new ArrayList<>();
+    Map<Class<?>, Map<Object, Object>> entityMaps = new HashMap<>();
+
+    buildSelectionsRecursively(root, selections, selectedFields, entityMaps, "");
+
+    log.info("Final selections: {}", selections.size());
+    selections.forEach(selection ->
+        log.debug("Selection: {}", selection.getAlias()));
+
+    cq.multiselect(selections);
+
+    // WHERE: ID'lerle filtrele
+    cq.where(root.get("id").in(entityIds));
+
+    // ORDER BY: Orijinal sıralamayı koru (artık güvenli)
+    if (sortFields != null && !sortFields.isEmpty()) {
+      List<Order> orders = buildOrderBy(cb, root, sortFields);
+      cq.orderBy(orders);
+    }
+
+    // DISTINCT - artık gerekli değil çünkü ID bazlı sorgu
+    cq.distinct(true);
+
+    TypedQuery<Tuple> query = entityManager.createQuery(cq);
+    List<Tuple> result = query.getResultList();
+
+    log.info("Loaded {} tuples for {} entities with relationships", result.size(), entityIds.size());
+
+    // Tuple'dan entity'e dönüşüm
+    return mapResultsToEntities(result, entityClass, selectedFields, entityMaps);
   }
 
   // Filtreleme için recursive predicate builder - TÜM HATALAR DÜZELTİLDİ
