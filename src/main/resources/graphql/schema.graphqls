@@ -69,12 +69,178 @@ type ContractDetail {
     endDate: String
     startDate: String
 }
+#----------------------------------------------------------------------------------------
+#----------------------------------------------------------------------------------------
+# Mevcut enum'larınıza ek
+enum FilterOperator {
+    EQ
+    NEQ
+    GT
+    GTE
+    LT
+    LTE
+    IN
+    NOT_IN
+    CONTAINS
+    STARTS_WITH
+    ENDS_WITH
+    BETWEEN
+    IS_NULL
+    IS_NOT_NULL
+}
 
+# Filtre input type'ları
+input ContractFilterInput {
+    contractName: StringFilterInput
+    contractNo: StringFilterInput
+    contractStatus: ContractStatusEnumFilterInput
+    renewalNo: IntFilterInput
+    endorsementNo: IntFilterInput
 
+    # Nested ilişki filtreleri
+    contractDetail: ContractDetailFilterInput
+    contractBranches: ContractBranchListFilterInput
+    layers: LayerListFilterInput
+
+    # Logical operators
+    and: [ContractFilterInput!]
+    or: [ContractFilterInput!]
+    not: ContractFilterInput
+}
+
+# String filtreleri
+input StringFilterInput {
+    operator: FilterOperator!
+    value: String
+    values: [String!]
+    caseSensitive: Boolean = false
+}
+
+# Enum filtreleri
+input ContractStatusEnumFilterInput {
+    operator: FilterOperator!
+    value: ContractStatusEnum
+    values: [ContractStatusEnum!]
+}
+
+# Sayısal filtreler
+input IntFilterInput {
+    operator: FilterOperator!
+    value: Int
+    values: [Int!]
+}
+
+input FloatFilterInput {
+    operator: FilterOperator!
+    value: Float
+    values: [Float!]
+}
+
+# Tarih filtreleri
+input DateTimeFilterInput {
+    operator: FilterOperator!
+    value: String  # ISO formatında
+    values: [String!]
+    start: String
+    end: String
+}
+
+# Nested entity filtreleri
+input ContractDetailFilterInput {
+    startDate: DateTimeFilterInput
+    endDate: DateTimeFilterInput
+    and: [ContractDetailFilterInput!]
+    or: [ContractDetailFilterInput!]
+}
+
+input ContractBranchListFilterInput {
+    some: ContractBranchFilterInput
+    every: ContractBranchFilterInput
+    none: ContractBranchFilterInput
+}
+
+input ContractBranchFilterInput {
+    branchEnum: BranchEnumFilterInput
+    premiumAmount: FloatFilterInput
+    contractCovers: ContractCoverListFilterInput
+    and: [ContractBranchFilterInput!]
+    or: [ContractBranchFilterInput!]
+}
+
+input BranchEnumFilterInput {
+    operator: FilterOperator!
+    value: BranchEnum
+    values: [BranchEnum!]
+}
+
+input ContractCoverListFilterInput {
+    some: ContractCoverFilterInput
+    every: ContractCoverFilterInput
+    none: ContractCoverFilterInput
+}
+
+input ContractCoverFilterInput {
+    coverEnum: CoverEnumFilterInput
+    premiumAmount: FloatFilterInput
+    and: [ContractCoverFilterInput!]
+    or: [ContractCoverFilterInput!]
+}
+
+input CoverEnumFilterInput {
+    operator: FilterOperator!
+    value: CoverEnum
+    values: [CoverEnum!]
+}
+
+input LayerListFilterInput {
+    some: LayerFilterInput
+    every: LayerFilterInput
+    none: LayerFilterInput
+}
+
+input LayerFilterInput {
+    layerOrder: IntFilterInput
+    lossLimitAmount: FloatFilterInput
+    lossLimitAmountRc: FloatFilterInput
+    deductibleAmount: FloatFilterInput
+    deductibleAmountRc: FloatFilterInput
+    reinstatements: ReinstatementListFilterInput
+    and: [LayerFilterInput!]
+    or: [LayerFilterInput!]
+}
+
+input ReinstatementListFilterInput {
+    some: ReinstatementFilterInput
+    every: ReinstatementFilterInput
+    none: ReinstatementFilterInput
+}
+
+input ReinstatementFilterInput {
+    reinstatementOrder: IntFilterInput
+    reinstatementRatio: FloatFilterInput
+    and: [ReinstatementFilterInput!]
+    or: [ReinstatementFilterInput!]
+}
+
+type ContractSearchResult {
+    contracts: [Contract!]!
+    totalCount: Int!
+    page: Int!
+    size: Int!
+    totalPages: Int!
+}
+#----------------------------------------------------------------------------------------
+#----------------------------------------------------------------------------------------
 type Query {
     getContract(contractId: ID!): Contract
     getContractDynamicSql(contractId: ID!): Contract
     getContractDynamicSqlV2(contractId: ID!): Contract
     getContractDynamicSqlV3(contractId: ID!): Contract
     getAllContracts: [Contract!]!
+    searchContracts(
+        filter: ContractFilterInput
+        page: Int = 0
+        size: Int = 20
+        sort: [String!] = ["contractNo"]
+    ): ContractSearchResult!
 }

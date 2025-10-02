@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import jakarta.persistence.Entity;
 
@@ -25,7 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 @UtilityClass
 public class GraphQLFieldCollector {
-  public static final String ENTITY_PATH = "com.yourpackage.entity";
+  public static final String ENTITY_PATH = "com.graph.graphservice.entity";
   private static final Set<String> IGNORED_FIELDS = Set.of("__typename");
 
   public Map<Class<?>, Set<String>> collectFields(DataFetchingEnvironment env,
@@ -33,8 +34,11 @@ public class GraphQLFieldCollector {
     Map<Class<?>, Set<String>> selectedFields = new HashMap<>();
     DataFetchingFieldSelectionSet selectionSet = env.getSelectionSet();
 
-    log.info("=== GraphQL Field Collection ===");
+    log.info("=== GRAPHQL FIELD COLLECTOR START ===");
     log.info("Root entity: {}", rootEntityClass.getSimpleName());
+    log.info("Selection set fields: {}", selectionSet.getFields().stream()
+        .map(SelectedField::getName)
+        .collect(Collectors.toList()));
 
     processSelectionSet(selectionSet, rootEntityClass, selectedFields, "");
 
@@ -44,6 +48,7 @@ public class GraphQLFieldCollector {
     // Artificial relation field'larını işaretle
     markArtificialRelations(selectedFields);
 
+    log.info("=== FINAL COLLECTED FIELDS ===");
     selectedFields.forEach((entityClass, fields) ->
         log.info("Entity: {} -> Fields: {}", entityClass.getSimpleName(), fields));
 
@@ -51,18 +56,18 @@ public class GraphQLFieldCollector {
   }
 
   private void markArtificialRelations(Map<Class<?>, Set<String>> selectedFields) {
+    log.debug("=== MARKING ARTIFICIAL RELATIONS ===");
     for (Map.Entry<Class<?>, Set<String>> entry : selectedFields.entrySet()) {
       Class<?> entityClass = entry.getKey();
       Set<String> fields = entry.getValue();
 
       for (String field : new HashSet<>(fields)) {
         if (isArtificialRelation(entityClass, field)) {
-          // Artificial relation field'larını özel formatta işaretle
           String markedField = field + "::ARTIFICIAL";
           fields.remove(field);
           fields.add(markedField);
-          log.debug("Marked artificial relation: {}.{}",
-              entityClass.getSimpleName(), field);
+          log.info("Marked artificial relation: {}.{} -> {}",
+              entityClass.getSimpleName(), field, markedField);
         }
       }
     }
@@ -71,13 +76,20 @@ public class GraphQLFieldCollector {
   private boolean isArtificialRelation(Class<?> entityClass, String fieldName) {
     try {
       Field field = entityClass.getDeclaredField(fieldName);
-      return field.isAnnotationPresent(ArtificialRelation.class);
+      boolean isArtificial = field.isAnnotationPresent(ArtificialRelation.class);
+      if (isArtificial) {
+        log.debug("Found artificial relation: {}.{}", entityClass.getSimpleName(), fieldName);
+      }
+      return isArtificial;
     } catch (NoSuchFieldException e) {
+      log.debug("Field '{}' not found when checking artificial relation in: {}",
+          fieldName, entityClass.getSimpleName());
       return false;
     }
   }
 
   private void automaticallyAddIdFields(Map<Class<?>, Set<String>> selectedFields) {
+    log.debug("=== AUTO-ADDING ID FIELDS ===");
     for (Map.Entry<Class<?>, Set<String>> entry : selectedFields.entrySet()) {
       Class<?> entityClass = entry.getKey();
       Set<String> fields = entry.getValue();
@@ -86,6 +98,7 @@ public class GraphQLFieldCollector {
         entityClass.getDeclaredField("id");
         if (!fields.contains("id") && !fields.contains("id::ARTIFICIAL")) {
           fields.add("id");
+          log.debug("Auto-added 'id' field for: {}", entityClass.getSimpleName());
         }
       } catch (NoSuchFieldException e) {
         log.debug("Entity {} doesn't have 'id' field, skipping auto-add",
@@ -102,39 +115,55 @@ public class GraphQLFieldCollector {
     Set<String> currentFields = selectedFields.computeIfAbsent(currentEntityClass,
         k -> new HashSet<>());
 
+    log.info("Processing selection set for: {} (path: '{}')",
+        currentEntityClass.getSimpleName(), currentPath);
+
     for (SelectedField field : selectionSet.getFields()) {
       String fieldName = field.getName();
 
       if (IGNORED_FIELDS.contains(fieldName)) {
+        log.debug("Ignoring field: {}", fieldName);
         continue;
       }
 
       String fullFieldPath = currentPath.isEmpty() ? fieldName : currentPath + "." + fieldName;
 
+      log.info("Processing field: '{}' (full path: '{}')", fieldName, fullFieldPath);
+
       try {
         Field entityField = currentEntityClass.getDeclaredField(fieldName);
+        log.debug("Found entity field: {} with type: {}",
+            fieldName, entityField.getType().getSimpleName());
 
         if (isRelationshipField(entityField)) {
-          // Artificial relation kontrolü
           boolean isArtificial = entityField.isAnnotationPresent(ArtificialRelation.class);
           String fieldToAdd = isArtificial ? fieldName + "::ARTIFICIAL" : fieldName;
 
           currentFields.add(fieldToAdd);
+          log.info("Added RELATIONSHIP field: {} (artificial: {})", fieldToAdd, isArtificial);
 
-          // Target class'ı bul
           Class<?> targetClass = getTargetClass(entityField);
           DataFetchingFieldSelectionSet subSelection = field.getSelectionSet();
 
+          log.info("Relationship '{}' -> target class: {}", fieldName, targetClass.getSimpleName());
+          log.debug("Sub-selection for '{}': {}", fieldName,
+              subSelection != null ? subSelection.getFields().stream()
+                  .map(SelectedField::getName)
+                  .collect(Collectors.toList()) : "null");
+
           if (subSelection != null && !subSelection.getFields().isEmpty()) {
+            log.info("Recursing into relationship: {} -> {}", fieldName, targetClass.getSimpleName());
             processSelectionSet(subSelection, targetClass, selectedFields, fullFieldPath);
+          } else {
+            log.debug("No sub-selection for relationship: {}", fieldName);
           }
         } else {
-          // Basit field - direkt ekle
           currentFields.add(fieldName);
+          log.info("Added SIMPLE field: {}", fieldName);
         }
 
       } catch (NoSuchFieldException e) {
-        log.debug("Field '{}' not found in entity: {} (path: {})",
+        log.warn("Field '{}' not found in entity: {} (path: '{}')",
             fieldName, currentEntityClass.getSimpleName(), fullFieldPath);
       }
     }
@@ -144,6 +173,7 @@ public class GraphQLFieldCollector {
     Class<?> fieldType = field.getType();
 
     if (isSimpleType(fieldType)) {
+      log.debug("Field '{}' is SIMPLE type: {}", field.getName(), fieldType.getSimpleName());
       return false;
     }
 
@@ -151,11 +181,17 @@ public class GraphQLFieldCollector {
     boolean isCollection = Collection.class.isAssignableFrom(fieldType);
     boolean isEntityCollection = isCollection && isCollectionOfEntities(field);
 
-    return isEntity || isEntityCollection;
+    log.debug("Field '{}' analysis - Type: {}, isEntity: {}, isCollection: {}, isEntityCollection: {}",
+        field.getName(), fieldType.getSimpleName(), isEntity, isCollection, isEntityCollection);
+
+    boolean isRelationship = isEntity || isEntityCollection;
+    log.info("Field '{}' is RELATIONSHIP: {}", field.getName(), isRelationship);
+
+    return isRelationship;
   }
 
   public boolean isSimpleType(Class<?> clazz) {
-    return clazz.isPrimitive()
+    boolean isSimple = clazz.isPrimitive()
         || clazz == String.class
         || clazz == Integer.class
         || clazz == Long.class
@@ -166,14 +202,23 @@ public class GraphQLFieldCollector {
         || clazz == UUID.class
         || clazz == LocalDateTime.class
         || clazz.isEnum();
+
+    log.trace("Type {} is simple: {}", clazz.getSimpleName(), isSimple);
+    return isSimple;
   }
 
   private boolean isEntityClass(Class<?> clazz) {
     if (clazz.getPackage() == null) {
+      log.trace("Class {} has no package, not entity", clazz.getSimpleName());
       return false;
     }
-    return clazz.getPackage().getName().startsWith(ENTITY_PATH) ||
-        clazz.isAnnotationPresent(Entity.class);
+
+    String packageName = clazz.getPackage().getName();
+    boolean isEntity = packageName.startsWith(ENTITY_PATH) || clazz.isAnnotationPresent(Entity.class);
+
+    log.debug("Class {} is entity: {} (package: {}, entity path: {})",
+        clazz.getSimpleName(), isEntity, packageName, ENTITY_PATH);
+    return isEntity;
   }
 
   private boolean isCollectionOfEntities(Field field) {
@@ -184,18 +229,28 @@ public class GraphQLFieldCollector {
     try {
       ParameterizedType genericType = (ParameterizedType) field.getGenericType();
       Class<?> collectionType = (Class<?>) genericType.getActualTypeArguments()[0];
-      return isEntityClass(collectionType);
+      boolean isEntityCollection = isEntityClass(collectionType);
+
+      log.debug("Collection field '{}' of type {} -> isEntityCollection: {}",
+          field.getName(), collectionType.getSimpleName(), isEntityCollection);
+      return isEntityCollection;
     } catch (Exception e) {
+      log.warn("Error checking collection of entities for field '{}': {}",
+          field.getName(), e.getMessage());
       return false;
     }
   }
 
   private Class<?> getTargetClass(Field field) {
+    Class<?> targetClass;
     if (Collection.class.isAssignableFrom(field.getType())) {
       ParameterizedType genericType = (ParameterizedType) field.getGenericType();
-      return (Class<?>) genericType.getActualTypeArguments()[0];
+      targetClass = (Class<?>) genericType.getActualTypeArguments()[0];
+      log.debug("Collection field '{}' target class: {}", field.getName(), targetClass.getSimpleName());
     } else {
-      return field.getType();
+      targetClass = field.getType();
+      log.debug("Single relation field '{}' target class: {}", field.getName(), targetClass.getSimpleName());
     }
+    return targetClass;
   }
 }

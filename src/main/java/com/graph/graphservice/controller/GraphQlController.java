@@ -8,14 +8,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.graph.graphservice.dto.ContractResponse;
+import com.graph.graphservice.dto.ContractSearchResult;
 import com.graph.graphservice.entity.ContractEntity;
+import com.graph.graphservice.filter.ContractFilter;
 import com.graph.graphservice.mapper.ContractMapper;
 import com.graph.graphservice.repository.ContractRepository;
 import com.graph.graphservice.repository.DynamicContractRepository;
 import com.graph.graphservice.repository.DynamicContractRepositoryV2;
 import com.graph.graphservice.repository.DynamicContractRepositoryV3;
+import com.graph.graphservice.repository.DynamicFilterRepository;
 import com.graph.graphservice.utils.GraphQLFieldCollector;
 
 import lombok.RequiredArgsConstructor;
@@ -31,6 +36,7 @@ public class GraphQlController {
   private final DynamicContractRepository dynamicContractRepository;
   private final DynamicContractRepositoryV2 dynamicContractRepositoryV2;
   private final DynamicContractRepositoryV3 dynamicContractRepositoryV3;
+  private final DynamicFilterRepository dynamicFilterRepository;
 
   @QueryMapping
   public ContractResponse getContract(@Argument("contractId") UUID contractId) {
@@ -128,5 +134,48 @@ public class GraphQlController {
         contractId, ContractEntity.class, selectedFields);
 
     return ContractMapper.INSTANCE.toModel(contractEntity);
+  }
+
+  @QueryMapping
+  public ContractSearchResult searchContracts(@Argument("filter") Map<String, Object> filterInput,
+                                              @Argument("page") Integer page,
+                                              @Argument("size") Integer size,
+                                              @Argument("sort") List<String> sort,
+                                              DataFetchingEnvironment env) {
+
+    // Filter input'unu Java objesine çevir
+    ContractFilter filter = convertFilterInput(filterInput);
+
+    // Seçilen field'ları topla
+    Map<Class<?>, Set<String>> selectedFields = GraphQLFieldCollector.collectFields(env, ContractEntity.class);
+
+    // Sayfalama
+    int pageNum = page != null ? page : 0;
+    int pageSize = size != null ? size : 20;
+    List<String> sortFields = sort != null ? sort : List.of("contractNo");
+
+    // Sorguyu çalıştır
+    List<ContractEntity> contracts = dynamicFilterRepository.searchEntities(
+        ContractEntity.class, filter, selectedFields, pageNum, pageSize, sortFields);
+
+    // Toplam sayıyı al (pagination için)
+    Long totalCount = dynamicFilterRepository.countEntities(ContractEntity.class, filter);
+
+    return ContractSearchResult.builder()
+        .contracts(contracts.stream()
+            .map(ContractMapper.INSTANCE::toModel)
+            .collect(Collectors.toList()))
+        .totalCount(totalCount.intValue())
+        .page(pageNum)
+        .size(pageSize)
+        .totalPages((int) Math.ceil((double) totalCount / pageSize))
+        .build();
+  }
+
+  private ContractFilter convertFilterInput(Map<String, Object> filterInput) {
+    // Map'ten Java objesine dönüşüm
+    // Bu kısım Jackson ObjectMapper veya manuel mapping ile yapılabilir
+    ObjectMapper mapper = new ObjectMapper();
+    return mapper.convertValue(filterInput, ContractFilter.class);
   }
 }

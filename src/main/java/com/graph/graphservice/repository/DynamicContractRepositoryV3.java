@@ -26,19 +26,18 @@ import jakarta.persistence.criteria.Root;
 import jakarta.persistence.criteria.Selection;
 
 import com.graph.graphservice.aspect.ArtificialRelation;
-import com.graph.graphservice.entity.ContractEntity;
-import com.graph.graphservice.entity.LayerEntity;
-import com.graph.graphservice.entity.ReinstatementEntity;
 import com.graph.graphservice.utils.GraphQLFieldCollector;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
 @Repository
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class DynamicContractRepositoryV3 {
   private final EntityManager entityManager;
 
@@ -86,42 +85,6 @@ public class DynamicContractRepositoryV3 {
       throw new RuntimeException("Query execution failed", e);
     }
   }
-
-//  private void logMappedEntity(Object entity) {
-//    if (entity != null && log.isDebugEnabled()) {
-//      log.debug("=== Mapped Entity Contents ===");
-//      log.debug("Entity type: {}", entity.getClass().getSimpleName());
-//
-//      try {
-//        if (entity instanceof ContractEntity) {
-//          ContractEntity contract = (ContractEntity) entity;
-//          log.debug("Contract ID: {}", contract.getId());
-//          log.debug("Contract Name: {}", contract.getContractName());
-//          log.debug("Contract No: {}", contract.getContractNo());
-//
-//          if (contract.getLayers() != null) {
-//            log.debug("Layers count: {}", contract.getLayers().size());
-//            for (LayerEntity layer : contract.getLayers()) {
-//              log.debug("Layer ID: {}, Order: {}", layer.getId(), layer.getLayerOrder());
-//              if (layer.getReinstatements() != null) {
-//                log.debug("  Reinstatements count: {}", layer.getReinstatements().size());
-//                for (ReinstatementEntity reinst : layer.getReinstatements()) {
-//                  log.debug("    Reinstatement ID: {}, Order: {}, Ratio: {}",
-//                      reinst.getId(), reinst.getReinstatementOrder(), reinst.getReinstatementRatio());
-//                }
-//              } else {
-//                log.debug("  Reinstatements: null");
-//              }
-//            }
-//          } else {
-//            log.debug("Layers: null");
-//          }
-//        }
-//      } catch (Exception e) {
-//        log.debug("Error logging mapped entity: {}", e.getMessage());
-//      }
-//    }
-//  }
 
   private void logTupleContents(List<Tuple> result) {
     if (!result.isEmpty() && log.isDebugEnabled()) {

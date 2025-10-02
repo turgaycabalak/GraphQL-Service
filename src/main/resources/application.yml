@@ -6,18 +6,18 @@ spring:
     name: graph-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/postgres
+    url: jdbc:p6spy:postgresql://localhost:5432/postgres
     username: multiservice
     password: 123456
-    driver-class-name: org.postgresql.Driver
-    #    driver-class-name: com.p6spy.engine.spy.P6SpyDriver
+#    driver-class-name: org.postgresql.Driver
+    driver-class-name: com.p6spy.engine.spy.P6SpyDriver
     hikari:
       maximum-pool-size: '2'
 
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         default_schema: graph
