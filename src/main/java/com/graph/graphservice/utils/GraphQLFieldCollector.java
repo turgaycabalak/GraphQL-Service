@@ -36,7 +36,7 @@ public class GraphQLFieldCollector {
 
     log.info("=== GRAPHQL FIELD COLLECTOR START ===");
     log.info("Root entity: {}", rootEntityClass.getSimpleName());
-    log.info("Selection set fields: {}", selectionSet.getFields().stream()
+    log.debug("Selection set fields: {}", selectionSet.getFields().stream()
         .map(SelectedField::getName)
         .collect(Collectors.toList()));
 
@@ -48,7 +48,7 @@ public class GraphQLFieldCollector {
     // Artificial relation field'larını işaretle
     markArtificialRelations(selectedFields);
 
-    log.info("=== FINAL COLLECTED FIELDS ===");
+    log.debug("=== FINAL COLLECTED FIELDS ===");
     selectedFields.forEach((entityClass, fields) ->
         log.info("Entity: {} -> Fields: {}", entityClass.getSimpleName(), fields));
 
@@ -66,7 +66,7 @@ public class GraphQLFieldCollector {
           String markedField = field + "::ARTIFICIAL";
           fields.remove(field);
           fields.add(markedField);
-          log.info("Marked artificial relation: {}.{} -> {}",
+          log.debug("Marked artificial relation: {}.{} -> {}",
               entityClass.getSimpleName(), field, markedField);
         }
       }
@@ -115,7 +115,7 @@ public class GraphQLFieldCollector {
     Set<String> currentFields = selectedFields.computeIfAbsent(currentEntityClass,
         k -> new HashSet<>());
 
-    log.info("Processing selection set for: {} (path: '{}')",
+    log.debug("Processing selection set for: {} (path: '{}')",
         currentEntityClass.getSimpleName(), currentPath);
 
     for (SelectedField field : selectionSet.getFields()) {
@@ -128,7 +128,7 @@ public class GraphQLFieldCollector {
 
       String fullFieldPath = currentPath.isEmpty() ? fieldName : currentPath + "." + fieldName;
 
-      log.info("Processing field: '{}' (full path: '{}')", fieldName, fullFieldPath);
+      log.debug("Processing field: '{}' (full path: '{}')", fieldName, fullFieldPath);
 
       try {
         Field entityField = currentEntityClass.getDeclaredField(fieldName);
@@ -140,26 +140,26 @@ public class GraphQLFieldCollector {
           String fieldToAdd = isArtificial ? fieldName + "::ARTIFICIAL" : fieldName;
 
           currentFields.add(fieldToAdd);
-          log.info("Added RELATIONSHIP field: {} (artificial: {})", fieldToAdd, isArtificial);
+          log.debug("Added RELATIONSHIP field: {} (artificial: {})", fieldToAdd, isArtificial);
 
           Class<?> targetClass = getTargetClass(entityField);
           DataFetchingFieldSelectionSet subSelection = field.getSelectionSet();
 
-          log.info("Relationship '{}' -> target class: {}", fieldName, targetClass.getSimpleName());
+          log.debug("Relationship '{}' -> target class: {}", fieldName, targetClass.getSimpleName());
           log.debug("Sub-selection for '{}': {}", fieldName,
               subSelection != null ? subSelection.getFields().stream()
                   .map(SelectedField::getName)
                   .collect(Collectors.toList()) : "null");
 
           if (subSelection != null && !subSelection.getFields().isEmpty()) {
-            log.info("Recursing into relationship: {} -> {}", fieldName, targetClass.getSimpleName());
+            log.debug("Recursing into relationship: {} -> {}", fieldName, targetClass.getSimpleName());
             processSelectionSet(subSelection, targetClass, selectedFields, fullFieldPath);
           } else {
             log.debug("No sub-selection for relationship: {}", fieldName);
           }
         } else {
           currentFields.add(fieldName);
-          log.info("Added SIMPLE field: {}", fieldName);
+          log.debug("Added SIMPLE field: {}", fieldName);
         }
 
       } catch (NoSuchFieldException e) {
@@ -185,7 +185,7 @@ public class GraphQLFieldCollector {
         field.getName(), fieldType.getSimpleName(), isEntity, isCollection, isEntityCollection);
 
     boolean isRelationship = isEntity || isEntityCollection;
-    log.info("Field '{}' is RELATIONSHIP: {}", field.getName(), isRelationship);
+    log.debug("Field '{}' is RELATIONSHIP: {}", field.getName(), isRelationship);
 
     return isRelationship;
   }

@@ -73,10 +73,10 @@ public class DynamicFilterRepository {
                                     int size,
                                     List<String> sortFields) {
 
-    log.info("=== DYNAMIC FILTER REPOSITORY - SEARCH ENTITIES ===");
-    log.info("Entity Class: {}", entityClass.getSimpleName());
-    log.info("Selected Fields: {}", selectedFields);
-    log.info("Page: {}, Size: {}, Sort: {}", page, size, sortFields);
+    log.debug("=== DYNAMIC FILTER REPOSITORY - SEARCH ENTITIES ===");
+    log.debug("Entity Class: {}", entityClass.getSimpleName());
+    log.debug("Selected Fields: {}", selectedFields);
+    log.debug("Page: {}, Size: {}, Sort: {}", page, size, sortFields);
 
     if (selectedFields == null || selectedFields.isEmpty()) {
       log.warn("No fields selected for entity: {}", entityClass.getSimpleName());
@@ -105,8 +105,8 @@ public class DynamicFilterRepository {
   }
 
   public <T> Long countEntities(Class<T> entityClass, BaseFilter filter) {
-    log.info("=== DYNAMIC FILTER REPOSITORY - COUNT ENTITIES ===");
-    log.info("Entity Class: {}, Filter: {}", entityClass.getSimpleName(), filter != null ? "present" : "null");
+    log.debug("=== DYNAMIC FILTER REPOSITORY - COUNT ENTITIES ===");
+    log.debug("Entity Class: {}, Filter: {}", entityClass.getSimpleName(), filter != null ? "present" : "null");
 
     CriteriaBuilder cb = entityManager.getCriteriaBuilder();
     CriteriaQuery<Long> cq = cb.createQuery(Long.class);
@@ -122,7 +122,7 @@ public class DynamicFilterRepository {
     }
 
     Long count = entityManager.createQuery(cq).getSingleResult();
-    log.info("Count result: {}", count);
+    log.debug("Count result: {}", count);
 
     return count;
   }
@@ -190,7 +190,7 @@ public class DynamicFilterRepository {
         .map(tuple -> tuple.get("id", UUID.class))
         .collect(Collectors.toList());
 
-    log.info("Found {} entity IDs for pagination", ids.size());
+    log.debug("Found {} entity IDs for pagination", ids.size());
     return ids;
   }
 
@@ -216,7 +216,7 @@ public class DynamicFilterRepository {
 
     buildSelectionsRecursively(root, selections, selectedFields, entityMaps, "");
 
-    log.info("Final selections: {}", selections.size());
+    log.debug("Final selections: {}", selections.size());
     selections.forEach(selection ->
         log.debug("Selection: {}", selection.getAlias()));
 
@@ -237,7 +237,7 @@ public class DynamicFilterRepository {
     TypedQuery<Tuple> query = entityManager.createQuery(cq);
     List<Tuple> result = query.getResultList();
 
-    log.info("Loaded {} tuples for {} entities with relationships", result.size(), entityIds.size());
+    log.debug("Loaded {} tuples for {} entities with relationships", result.size(), entityIds.size());
 
     // Tuple'dan entity'e dönüşüm
     return mapResultsToEntities(result, entityClass, selectedFields, entityMaps);
@@ -677,8 +677,8 @@ public class DynamicFilterRepository {
     Class<?> currentClass = from.getJavaType();
     Set<String> fields = selectedFields.get(currentClass);
 
-    log.info("=== BUILDING SELECTIONS FOR: {} ===", currentClass.getSimpleName());
-    log.info("Fields from GraphQL collector: {}", fields);
+    log.debug("=== BUILDING SELECTIONS FOR: {} ===", currentClass.getSimpleName());
+    log.debug("Fields from GraphQL collector: {}", fields);
 
     if (fields == null || fields.isEmpty()) {
       log.warn("NO FIELDS SELECTED for: {}", currentClass.getSimpleName());
@@ -690,19 +690,19 @@ public class DynamicFilterRepository {
       String cleanFieldName = cleanFieldName(field);
       boolean isArtificial = isArtificialRelationField(field);
 
-      log.info("Processing field: '{}' (clean: '{}', artificial: {})",
+      log.debug("Processing field: '{}' (clean: '{}', artificial: {})",
           field, cleanFieldName, isArtificial);
 
       if (!isRelationshipField(currentClass, cleanFieldName)) {
         try {
           Selection<?> selection = from.get(cleanFieldName).alias(prefix + cleanFieldName);
           selections.add(selection);
-          log.info("Added SIMPLE field selection: {}{}", prefix, cleanFieldName);
+          log.debug("Added SIMPLE field selection: {}{}", prefix, cleanFieldName);
         } catch (IllegalArgumentException e) {
           log.warn("Field '{}' not found in entity: {}", cleanFieldName, currentClass.getSimpleName());
         }
       } else {
-        log.info("Field '{}' is RELATIONSHIP, will create join", cleanFieldName);
+        log.debug("Field '{}' is RELATIONSHIP, will create join", cleanFieldName);
       }
     }
 
@@ -714,7 +714,7 @@ public class DynamicFilterRepository {
           Class<?> targetClass = getTargetClass(currentClass, cleanFieldName);
           String newPrefix = prefix + cleanFieldName + "_";
 
-          log.info("Creating JOIN for: {} -> {} with prefix: {}",
+          log.debug("Creating JOIN for: {} -> {} with prefix: {}",
               currentClass.getSimpleName(), targetClass.getSimpleName(), newPrefix);
 
           Join<?, ?> join = from.join(cleanFieldName, JoinType.LEFT);
@@ -737,7 +737,7 @@ public class DynamicFilterRepository {
       Map<String, Object> entityCache = new HashMap<>();
       List<T> entities = new ArrayList<>();
 
-      log.info("Starting to map {} tuples to entities", result.size());
+      log.debug("Starting to map {} tuples to entities", result.size());
 
       for (Tuple tuple : result) {
         T entity = processTupleAndBuildEntities(tuple, entityClass, selectedFields, entityCache, "");
@@ -747,7 +747,7 @@ public class DynamicFilterRepository {
         }
       }
 
-      log.info("Successfully mapped {} entities", entities.size());
+      log.debug("Successfully mapped {} entities", entities.size());
       return entities;
     } catch (Exception e) {
       log.error("Error mapping results to entities: {}", e.getMessage(), e);
