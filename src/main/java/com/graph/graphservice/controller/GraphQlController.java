@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.graph.graphservice.dto.ContractResponse;
@@ -162,9 +161,7 @@ public class GraphQlController {
     Long totalCount = dynamicFilterRepository.countEntities(ContractEntity.class, filter);
 
     return ContractSearchResult.builder()
-        .contracts(contracts.stream()
-            .map(ContractMapper.INSTANCE::toModel)
-            .collect(Collectors.toList()))
+        .contracts(ContractMapper.INSTANCE.toModels(contracts))
         .totalCount(totalCount.intValue())
         .page(pageNum)
         .size(pageSize)
