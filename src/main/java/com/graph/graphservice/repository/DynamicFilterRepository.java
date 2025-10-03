@@ -923,7 +923,7 @@ public class DynamicFilterRepository {
     }
 
     String packageName = pkg.getName();
-    boolean isEntity = packageName.startsWith("com.graph.graphservice.entity") || // ENTITY_PATH'inizi buraya yazın
+    boolean isEntity = packageName.startsWith(GraphQLFieldCollector.ENTITY_PATH) ||
         clazz.isAnnotationPresent(Entity.class);
 
     return isEntity;
