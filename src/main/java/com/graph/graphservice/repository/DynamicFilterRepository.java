@@ -687,6 +687,15 @@ public class DynamicFilterRepository {
 
     if (fields == null || fields.isEmpty()) {
       log.warn("NO FIELDS SELECTED for: {}", currentClass.getSimpleName());
+
+      // Hiç field seçilmemişse sadece ID'yi ekle**
+      try {
+        Selection<?> idSelection = from.get("id").alias(prefix + "id");
+        selections.add(idSelection);
+        log.debug("Added only ID field for: {}", currentClass.getSimpleName());
+      } catch (IllegalArgumentException e) {
+        log.warn("Entity {} doesn't have 'id' field", currentClass.getSimpleName());
+      }
       return;
     }
 
@@ -770,6 +779,11 @@ public class DynamicFilterRepository {
 
     // Entity ID'sini al
     Object entityId = getValueSafely(tuple, prefix + "id");
+    if (entityId == null) {
+      log.debug("Entity ID is null for {} with prefix: {}", entityClass.getSimpleName(), prefix);
+      return null;
+    }
+
     String entityKey = createCacheKey(entityId, prefix, entityClass);
 
     log.debug("Processing entity: {}, ID: {}, Prefix: {}",
@@ -792,8 +806,14 @@ public class DynamicFilterRepository {
         for (String field : fields) {
           String cleanFieldName = cleanFieldName(field);
           if (isCollectionField(entityClass, cleanFieldName)) {
-            Collection<Object> collection = getOrCreateCollection(entity, cleanFieldName);
-            log.debug("Pre-initialized collection for {}.{}", entityClass.getSimpleName(), cleanFieldName);
+            try {
+              Collection<Object> collection = getOrCreateCollection(entity, cleanFieldName);
+              log.debug("Pre-initialized collection for {}.{}",
+                  entityClass.getSimpleName(), cleanFieldName);
+            } catch (Exception e) {
+              log.warn("Failed to initialize collection {}.{}: {}",
+                  entityClass.getSimpleName(), cleanFieldName, e.getMessage());
+            }
           }
         }
 

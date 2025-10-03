@@ -9,7 +9,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.graph.graphservice.dto.ContractResponse;
 import com.graph.graphservice.dto.ContractSearchResult;
 import com.graph.graphservice.entity.ContractEntity;
@@ -31,6 +33,9 @@ import org.springframework.stereotype.Controller;
 @Controller
 @RequiredArgsConstructor
 public class GraphQlController {
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper()
+      .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+      .registerModule(new JavaTimeModule());
   private final ContractRepository contractRepository;
   private final DynamicContractRepository dynamicContractRepository;
   private final DynamicContractRepositoryV2 dynamicContractRepositoryV2;
@@ -143,7 +148,7 @@ public class GraphQlController {
                                               DataFetchingEnvironment env) {
 
     // Filter input'unu Java objesine çevir
-    ContractFilter filter = convertFilterInput(filterInput);
+    ContractFilter filter = OBJECT_MAPPER.convertValue(filterInput, ContractFilter.class);
 
     // Seçilen field'ları topla
     Map<Class<?>, Set<String>> selectedFields = GraphQLFieldCollector.collectFields(env, ContractEntity.class);
@@ -167,12 +172,5 @@ public class GraphQlController {
         .size(pageSize)
         .totalPages((int) Math.ceil((double) totalCount / pageSize))
         .build();
-  }
-
-  private ContractFilter convertFilterInput(Map<String, Object> filterInput) {
-    // Map'ten Java objesine dönüşüm
-    // Bu kısım Jackson ObjectMapper veya manuel mapping ile yapılabilir
-    ObjectMapper mapper = new ObjectMapper();
-    return mapper.convertValue(filterInput, ContractFilter.class);
   }
 }

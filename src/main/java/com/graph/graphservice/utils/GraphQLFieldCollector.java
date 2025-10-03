@@ -128,6 +128,11 @@ public class GraphQLFieldCollector {
         continue;
       }
 
+      if (fieldName.equals("contracts") || fieldName.equals("searchContracts")) {
+        log.debug("Skipping GraphQL wrapper field: {}", fieldName);
+        continue;
+      }
+
       String fullFieldPath = currentPath.isEmpty() ? fieldName : currentPath + "." + fieldName;
 
       log.debug("Processing field: '{}' (full path: '{}')", fieldName, fullFieldPath);
