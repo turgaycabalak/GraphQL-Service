@@ -27,7 +27,9 @@ import lombok.extern.slf4j.Slf4j;
 @UtilityClass
 public class GraphQLFieldCollector {
   public static final String ENTITY_PATH = "com.graph.graphservice.entity";
-  private static final Set<String> IGNORED_FIELDS = Set.of("__typename");
+  private static final Set<String> IGNORED_FIELDS = Set.of(
+      "__typename", "contracts", "totalCount", "page", "size", "totalPages"
+  );
 
   public Map<Class<?>, Set<String>> collectFields(DataFetchingEnvironment env,
                                                   Class<?> rootEntityClass) {
@@ -163,8 +165,8 @@ public class GraphQLFieldCollector {
         }
 
       } catch (NoSuchFieldException e) {
-        log.warn("Field '{}' not found in entity: {} (path: '{}')",
-            fieldName, currentEntityClass.getSimpleName(), fullFieldPath);
+        log.debug("Field '{}' not in {}, but might be in nested entity",
+            fieldName, currentEntityClass.getSimpleName());
       }
     }
   }
