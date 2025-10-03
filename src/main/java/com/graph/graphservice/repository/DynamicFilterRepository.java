@@ -206,6 +206,11 @@ public class DynamicFilterRepository {
       return new ArrayList<>();
     }
 
+    // Batch size kontrolü (performance için)
+    if (entityIds.size() > 1000) {
+      log.warn("Large ID list ({}), consider splitting into batches", entityIds.size());
+    }
+
     CriteriaBuilder cb = entityManager.getCriteriaBuilder();
     CriteriaQuery<Tuple> cq = cb.createTupleQuery();
     Root<T> root = cq.from(entityClass);
@@ -712,18 +717,19 @@ public class DynamicFilterRepository {
       if (isRelationshipField(currentClass, cleanFieldName)) {
         try {
           Class<?> targetClass = getTargetClass(currentClass, cleanFieldName);
-          String newPrefix = prefix + cleanFieldName + "_";
-
-          log.debug("Creating JOIN for: {} -> {} with prefix: {}",
-              currentClass.getSimpleName(), targetClass.getSimpleName(), newPrefix);
-
-          Join<?, ?> join = from.join(cleanFieldName, JoinType.LEFT);
           entityMaps.putIfAbsent(targetClass, new HashMap<>());
 
-          buildSelectionsRecursively(join, selections, selectedFields, entityMaps, newPrefix);
+          if (selectedFields.containsKey(targetClass)) {
+            String newPrefix = prefix + cleanFieldName + "_";
+            log.debug("Creating JOIN for: {} -> {} with prefix: {}",
+                currentClass.getSimpleName(), targetClass.getSimpleName(), newPrefix);
+
+            Join<?, ?> join = from.join(cleanFieldName, JoinType.LEFT);
+            buildSelectionsRecursively(join, selections, selectedFields, entityMaps, newPrefix);
+          }
         } catch (Exception e) {
-          log.error("Error creating join for field '{}' in {}: {}",
-              cleanFieldName, currentClass.getSimpleName(), e.getMessage(), e);
+          log.error("Join creation failed for {}.{}: {}",
+              currentClass.getSimpleName(), cleanFieldName, e.getMessage());
         }
       }
     }
@@ -779,9 +785,19 @@ public class DynamicFilterRepository {
       entityCache.put(entityKey, entity);
       log.debug("Created new entity: {}", entityKey);
 
-      // Basit field'ları set et
+      // Basit field'ları set etmeden ÖNCE collection'ları initialize et
       Set<String> fields = selectedFields.get(entityClass);
       if (fields != null) {
+        // Önce tüm collection field'larını initialize et (empty olarak)
+        for (String field : fields) {
+          String cleanFieldName = cleanFieldName(field);
+          if (isCollectionField(entityClass, cleanFieldName)) {
+            Collection<Object> collection = getOrCreateCollection(entity, cleanFieldName);
+            log.debug("Pre-initialized collection for {}.{}", entityClass.getSimpleName(), cleanFieldName);
+          }
+        }
+
+        // Sonra basit field'ları set et
         for (String field : fields) {
           String cleanFieldName = cleanFieldName(field);
           boolean isArtificial = isArtificialRelationField(field);
@@ -797,7 +813,7 @@ public class DynamicFilterRepository {
       }
     }
 
-    // İlişkileri işle - SADECE BASİT FIELDLAR SET EDİLDİKTEN SONRA
+    // İlişkileri işle - ARTIK COLLECTION'LAR BOŞ DA OLSA HAZIR
     Set<String> fields = selectedFields.get(entityClass);
     if (fields != null) {
       for (String field : fields) {
@@ -845,6 +861,9 @@ public class DynamicFilterRepository {
                     createCacheKey(relatedEntityId, newPrefix, targetClass), isArtificial);
               }
             }
+          } else {
+            // İlişki ID'si null ise, collection'ı boş bırak (zaten initialize edilmiş)
+            log.debug("No related entity found for {}.{}", entityClass.getSimpleName(), cleanFieldName);
           }
         }
       }
